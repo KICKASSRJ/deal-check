@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deal Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f4; --panel: #ffffff; --ink: #1d2733; --muted: #5b6876;
+    --line: #d3d9e0; --accent: #0b6e6e; --accent-ink: #ffffff; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171c; --panel: #1b222a; --ink: #e6ebf0; --muted: #9aa7b4;
+      --line: #2d3742; --accent: #4fb3b3; --accent-ink: #0c1a1a; --err: #f2988f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: "IBM Plex Sans", system-ui, sans-serif; background: var(--bg); color: var(--ink); display: flex; min-height: 100vh; }
+  aside { width: 340px; background: var(--panel); border-right: 1px solid var(--line); padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+  h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  p.sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+  label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  input[type=text], input[type=password] { width: 100%; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button, .btn { font: inherit; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; text-align: center; display: inline-block; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; border-radius: 0; background: var(--panel); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  #status { font-size: 13px; min-height: 18px; color: var(--muted); }
+  #status.err { color: var(--err); }
+  #found { font-size: 14px; line-height: 1.4; }
+  small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+  main { flex: 1; position: relative; min-height: 100vh; }
+  #map { position: absolute; inset: 0; }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 15px; padding: 24px; text-align: center; }
+  @media (max-width: 760px) {
+    body { flex-direction: column; }
+    aside { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+    main { min-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <div>
+    <h1>Deal Check</h1>
+    <p class="sub">Enter a US address to see the building outline, street labels and lot lines on Google Maps.</p>
+  </div>
+
+  <div>
+    <label for="addr">Property address</label>
+    <input id="addr" type="text" placeholder="e.g. 22617 SE 32nd St, Sammamish, WA" autocomplete="off">
+  </div>
+
+  <button class="primary" id="go">Show property</button>
+  <div id="status" role="status"></div>
+  <div id="found"></div>
+
+  <div>
+    <label>Map view</label>
+    <div class="seg" role="group" aria-label="Map view">
+      <button id="vRoad" aria-pressed="true">Map</button>
+      <button id="vSat" aria-pressed="false">Satellite</button>
+    </div>
+  </div>
+
+  <div>
+    <label>Zoom</label>
+    <div class="row">
+      <button id="zOut" aria-label="Zoom out">Zoom out</button>
+      <button id="zIn" aria-label="Zoom in">Zoom in</button>
+    </div>
+  </div>
+
+  <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener" style="display:none">Open as image</a>
+
+  <small>Lines between lots come from Google’s base map and are not a legal survey. Coverage varies by area.</small>
+</aside>
+
+<main>
+  <div id="map"></div>
+  <div id="empty">Your map will appear here.</div>
+</main>
+
+<script>
+(function () {
+  // Paste your Google Maps API key between the quotes (restrict it to your website in Google Cloud).
+  var API_KEY = "AIzaSyCVNIB_r5_JyiYTvwYOpIOXRVNVnIzbNNs";
+  var $ = function (id) { return document.getElementById(id); };
+  var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
+
+
+  function setStatus(msg, isErr) {
+    $("status").textContent = msg || "";
+    $("status").className = isErr ? "err" : "";
+  }
+
+  function loadMaps(key) {
+    return new Promise(function (resolve, reject) {
+      if (mapsLoaded && key === lastKey) return resolve();
+      if (mapsLoaded && key !== lastKey) return reject(new Error("Reload the page to use a different API key."));
+      window.__mapsReady = function () { mapsLoaded = true; lastKey = key; resolve(); };
+      window.gm_authFailure = function () { setStatus("Google rejected the API key. Check it and that billing and the required APIs are enabled.", true); };
+      var s = document.createElement("script");
+      s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(key) + "&callback=__mapsReady&loading=async";
+      s.onerror = function () { reject(new Error("Could not load Google Maps. Check your connection and API key.")); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function setView(type) {
+    $("vRoad").setAttribute("aria-pressed", type === "roadmap");
+    $("vSat").setAttribute("aria-pressed", type === "satellite");
+    if (map) map.setMapTypeId(type);
+    updateStaticLink();
+  }
+
+  function currentType() { return $("vSat").getAttribute("aria-pressed") === "true" ? "satellite" : "roadmap"; }
+
+  function updateStaticLink() {
+    if (!lastLatLng) return;
+    var z = map ? map.getZoom() : 20;
+    var url = "https://maps.googleapis.com/maps/api/staticmap?center=" + lastLatLng.lat + "," + lastLatLng.lng +
+      "&zoom=" + z + "&size=640x640&scale=2&maptype=" + currentType() +
+      "&markers=color:red%7C" + lastLatLng.lat + "," + lastLatLng.lng + "&key=" + encodeURIComponent(lastKey);
+    $("staticLink").href = url;
+    $("staticLink").style.display = "block";
+  }
+
+  async function show() {
+    var key = API_KEY.trim(), addr = $("addr").value.trim();
+    if (!key || key === "PASTE_YOUR_KEY_HERE") return setStatus("The site owner has not added an API key yet.", true);
+    if (!addr) return setStatus("Enter a property address.", true);
+    setStatus("Looking up address…");
+    $("found").textContent = "";
+    try {
+      await loadMaps(key);
+      var geocoder = new google.maps.Geocoder();
+      var res = await geocoder.geocode({ address: addr, componentRestrictions: { country: "US" } });
+      if (!res.results || !res.results.length) return setStatus("No match found. Add the city and state and try again.", true);
+      var r = res.results[0], loc = r.geometry.location;
+      lastLatLng = { lat: loc.lat(), lng: loc.lng() };
+      $("empty").style.display = "none";
+      if (!map) {
+        map = new google.maps.Map($("map"), {
+          center: loc, zoom: 20, mapTypeId: currentType(),
+          mapTypeControl: false, streetViewControl: true, fullscreenControl: true, tilt: 0
+        });
+        map.addListener("zoom_changed", updateStaticLink);
+      } else { map.setCenter(loc); map.setZoom(20); }
+      if (marker) marker.setMap(null);
+      marker = new google.maps.Marker({ position: loc, map: map, title: r.formatted_address });
+      $("found").textContent = r.formatted_address;
+      setStatus("");
+      updateStaticLink();
+    } catch (e) {
+      var msg = (e && e.message) ? e.message : "Something went wrong.";
+      if (/ZERO_RESULTS/.test(msg)) msg = "No match found. Add the city and state and try again.";
+      else if (/REQUEST_DENIED/.test(msg)) msg = "Request denied. Enable the Geocoding API and billing for this key.";
+      setStatus(msg, true);
+    }
+  }
+
+  $("go").addEventListener("click", show);
+  $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
+  $("vRoad").addEventListener("click", function () { setView("roadmap"); });
+  $("vSat").addEventListener("click", function () { setView("satellite"); });
+  $("zIn").addEventListener("click", function () { if (map) map.setZoom(map.getZoom() + 1); });
+  $("zOut").addEventListener("click", function () { if (map) map.setZoom(map.getZoom() - 1); });
+})();
+</script>
+</body>
+</html>
