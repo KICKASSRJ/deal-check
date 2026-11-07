@@ -36,6 +36,7 @@
   #status { font-size: 13px; min-height: 18px; color: var(--muted); }
   #status.err { color: var(--err); }
   #found { font-size: 14px; line-height: 1.4; }
+  #acc { font-size: 13px; line-height: 1.4; color: var(--muted); }
   small { color: var(--muted); font-size: 12px; line-height: 1.45; }
   main { flex: 1; position: relative; min-height: 100vh; }
   #map { position: absolute; inset: 0; }
@@ -62,6 +63,7 @@
   <button class="primary" id="go">Show property</button>
   <div id="status" role="status"></div>
   <div id="found"></div>
+  <div id="acc"></div>
 
   <div>
     <label>Map view</label>
@@ -115,6 +117,13 @@
     });
   }
 
+  function moveTo(latLng) {
+    if (marker) marker.setPosition(latLng);
+    lastLatLng = { lat: latLng.lat(), lng: latLng.lng() };
+    $("acc").textContent = "Pin moved by you.";
+    updateStaticLink();
+  }
+
   function setView(type) {
     $("vRoad").setAttribute("aria-pressed", type === "roadmap");
     $("vSat").setAttribute("aria-pressed", type === "satellite");
@@ -156,7 +165,13 @@
         map.addListener("zoom_changed", updateStaticLink);
       } else { map.setCenter(loc); map.setZoom(20); }
       if (marker) marker.setMap(null);
-      marker = new google.maps.Marker({ position: loc, map: map, title: r.formatted_address });
+      marker = new google.maps.Marker({ position: loc, map: map, title: r.formatted_address, draggable: true });
+      marker.addListener("dragend", function (ev) { moveTo(ev.latLng); });
+      if (!map.__clickBound) { map.__clickBound = true; map.addListener("click", function (ev) { moveTo(ev.latLng); }); }
+      var lt = r.geometry.location_type;
+      $("acc").textContent = lt === "ROOFTOP"
+        ? "Pin is at the exact building."
+        : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
       $("found").textContent = r.formatted_address;
       setStatus("");
       updateStaticLink();
