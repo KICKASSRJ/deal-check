@@ -37,6 +37,12 @@
   #status.err { color: var(--err); }
   #found { font-size: 14px; line-height: 1.4; }
   #acc { font-size: 13px; line-height: 1.4; color: var(--muted); }
+  #details { font-size: 14px; }
+  #details h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
+  #details dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
+  #details dt { color: var(--muted); }
+  #details dd { margin: 0; font-weight: 500; text-align: right; }
+  #details .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
   small { color: var(--muted); font-size: 12px; line-height: 1.45; }
   main { flex: 1; position: relative; min-height: 100vh; }
   #map { position: absolute; inset: 0; }
@@ -64,6 +70,7 @@
   <div id="status" role="status"></div>
   <div id="found"></div>
   <div id="acc"></div>
+  <div id="details"></div>
 
   <div>
     <label>Map view</label>
@@ -95,6 +102,54 @@
 (function () {
   // Paste your Google Maps API key between the quotes (restrict it to your website in Google Cloud).
   var API_KEY = "AIzaSyCVNIB_r5_JyiYTvwYOpIOXRVNVnIzbNNs";
+  // Address of your Cloudflare Worker (see worker.js). Example: https://deal-check-api.yourname.workers.dev
+  var WORKER_URL = "https://deal-check-api.ranjjinisg.workers.dev";
+
+  // Property details shown under the map. To add an attribute, add one line:
+  //   { label: "Name shown", path: "fieldName.in.data", fmt: optional function(value, record) }
+  var FIELDS = [
+    { label: "Property type", path: "propertyType" },
+    { label: "Bedrooms",      path: "bedrooms" },
+    { label: "Bathrooms",     path: "bathrooms" },
+    { label: "Living area",   path: "squareFootage", fmt: function (v) { return Number(v).toLocaleString() + " sq ft"; } },
+    { label: "Lot size",      path: "lotSize",       fmt: function (v) { return Number(v).toLocaleString() + " sq ft"; } },
+    { label: "Garage",        path: "features.garage", fmt: function (v, r) {
+        var f = r.features || {};
+        if (!f.garage) return "None";
+        return (f.garageSpaces ? f.garageSpaces + "-car " : "") + (f.garageType || "garage").toLowerCase();
+    } },
+    { label: "Year built",    path: "yearBuilt" }
+  ];
+
+  function getPath(obj, path) {
+    return path.split(".").reduce(function (o, k) { return (o == null) ? undefined : o[k]; }, obj);
+  }
+
+  function esc(t) { var d = document.createElement("div"); d.textContent = String(t); return d.innerHTML; }
+
+  async function loadDetails(address) {
+    var box = $("details");
+    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="note">Loading property details…</div>';
+    try {
+      var clean = address.replace(/,\s*USA$/i, "");
+      var res = await fetch(WORKER_URL + "?address=" + encodeURIComponent(clean));
+      var data = await res.json();
+      if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
+      var html = "<h2>Property details</h2><dl>";
+      FIELDS.forEach(function (f) {
+        var v = getPath(data, f.path);
+        var shown = (v === undefined || v === null || v === "") ? "—" : (f.fmt ? f.fmt(v, data) : v);
+        if (f.fmt && (v === undefined || v === null)) shown = "—";
+        html += "<dt>" + esc(f.label) + "</dt><dd>" + esc(shown) + "</dd>";
+      });
+      html += '</dl><div class="note">Source: public records via RentCast. May differ from listing sites.</div>';
+      box.innerHTML = html;
+    } catch (e) {
+      box.innerHTML = '<div class="note">Could not load property details.</div>';
+    }
+  }
+
   var $ = function (id) { return document.getElementById(id); };
   var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
 
@@ -173,6 +228,7 @@
         ? "Pin is at the exact building."
         : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
       $("found").textContent = r.formatted_address;
+      loadDetails(r.formatted_address);
       setStatus("");
       updateStaticLink();
     } catch (e) {
