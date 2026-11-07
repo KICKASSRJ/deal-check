@@ -47,6 +47,20 @@
   #picker summary { cursor: pointer; color: var(--accent); font-weight: 500; }
   #pickList { margin-top: 8px; display: grid; gap: 6px; }
   label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
+  #rent { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #rent h2 { font-size: 15px; margin: 0; font-weight: 600; }
+  #rent .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  #rent .f label { font-size: 12px; color: var(--muted); }
+  #rent select, #rent input[type=text] { width: 100%; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  #rentOut dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
+  #rentOut dt { color: var(--muted); } #rentOut dd { margin: 0; font-weight: 500; text-align: right; }
+  #rentOut .big { font-size: 20px; font-weight: 600; margin: 4px 0 8px; }
+  #rentOut .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.4; }
+  #rentOut .err { color: var(--err); font-size: 13px; }
+  #rentOut table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  #rentOut th, #rentOut td { text-align: right; padding: 4px 3px; border-bottom: 1px solid var(--line); }
+  #rentOut th:first-child, #rentOut td:first-child { text-align: left; }
+  #rentOut th { color: var(--muted); font-weight: 500; }
   small { color: var(--muted); font-size: 12px; line-height: 1.45; }
   main { flex: 1; position: relative; min-height: 100vh; }
   #map { position: absolute; inset: 0; }
@@ -76,6 +90,22 @@
   <div id="acc"></div>
   <div id="details"></div>
   <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
+  <div id="rent">
+    <h2>Rent check (Rentometer)</h2>
+    <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
+    <div class="grid2">
+      <div class="f"><label for="rBeds">Bedrooms</label>
+        <select id="rBeds"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
+      <div class="f"><label for="rBaths">Bathrooms</label>
+        <select id="rBaths"><option>Any</option><option>1</option><option>1.5</option><option selected>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4</option></select></div>
+      <div class="f"><label for="rSqft">Square feet</label><input id="rSqft" type="text" inputmode="numeric" placeholder="e.g. 1800"></div>
+      <div class="f"><label for="rType">Type</label>
+        <select id="rType"><option value="any">Any</option><option value="house">House</option><option value="apartment">Apartment</option></select></div>
+    </div>
+    <label class="pick"><input type="checkbox" id="rPlus" checked> This many bathrooms or more</label>
+    <button id="rentGo">Check rents</button>
+    <div id="rentOut"></div>
+  </div>
 
   <div>
     <label>Map view</label>
@@ -206,6 +236,9 @@
   async function loadDetails(address) {
     var box = $("details");
     lastRecord = null;
+    lastAddress = address.replace(/,\s*USA$/i, "");
+    $("rAddr").value = lastAddress;
+    $("rentOut").innerHTML = "";
     if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { box.innerHTML = ""; return; }
     box.innerHTML = '<div class="note">Loading property details…</div>';
     try {
@@ -215,8 +248,80 @@
       if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
       lastRecord = data;
       renderDetails();
+      prefillRent();
     } catch (e) {
       box.innerHTML = '<div class="note">Could not load property details.</div>';
+    }
+  }
+
+  // ---- Rent check (Rentometer) -------------------------------------------------
+  var lastAddress = "";
+
+  function prefillRent() {
+    $("rAddr").value = lastAddress;
+    var r = lastRecord;
+    if (!r) return;
+    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(0, Math.min(6, Math.round(r.bedrooms))));
+    if (typeof r.bathrooms === "number") $("rBaths").value = String(Math.max(1, Math.min(4, Math.round(r.bathrooms * 2) / 2)));
+    if (r.squareFootage) $("rSqft").value = String(r.squareFootage);
+  }
+
+  function money0(v) { return (v === undefined || v === null || isNaN(v)) ? "—" : "$" + Math.round(Number(v)).toLocaleString(); }
+
+  function median(a) {
+    var b = a.slice().sort(function (x, y) { return x - y; }), n = b.length;
+    return n ? (n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2) : null;
+  }
+
+  function renderRent(d) {
+    var sq = Number(String($("rSqft").value).replace(/[^0-9.]/g, "")) || 0;
+    var list = Array.isArray(d.property_listings) ? d.property_listings : [];
+    var html = '<div class="big">' + esc(money0(d.median)) + ' <span style="font-size:13px;font-weight:400;color:var(--muted)">median rent / month</span></div><dl>';
+    html += "<dt>Average</dt><dd>" + esc(money0(d.mean)) + "</dd>";
+    html += "<dt>Typical range (25th–75th)</dt><dd>" + esc(money0(d.percentile_25)) + " – " + esc(money0(d.percentile_75)) + "</dd>";
+    html += "<dt>Lowest – highest</dt><dd>" + esc(money0(d.min)) + " – " + esc(money0(d.max)) + "</dd>";
+    html += "<dt>Listings used</dt><dd>" + esc(d.count === undefined ? "—" : d.count) + "</dd>";
+    if (d.average_update_days !== undefined) html += "<dt>Average listing age</dt><dd>" + esc(d.average_update_days) + " days</dd>";
+
+    // Estimate from your square footage, using the price per sq ft of the comparable listings
+    var ppsf = list.filter(function (l) { return l.price > 0 && l.sqft > 0; }).map(function (l) { return l.price / l.sqft; });
+    if (sq && ppsf.length >= 3) {
+      html += "<dt>Estimate for " + esc(sq.toLocaleString()) + " sq ft</dt><dd>" + esc(money0(median(ppsf) * sq)) + "</dd>";
+    }
+    html += "</dl>";
+    if (sq && ppsf.length >= 3) html += '<div class="note">The square-foot estimate uses the median price per sq ft (' + esc("$" + median(ppsf).toFixed(2)) + ") of " + ppsf.length + " nearby listings that report size.</div>";
+    else if (sq) html += '<div class="note">Too few nearby listings report square footage to estimate by size.</div>';
+
+    if (list.length) {
+      html += "<table><tr><th>Bd/Ba</th><th>Sq ft</th><th>Rent</th><th>$/sq ft</th><th>Seen</th></tr>";
+      list.slice(0, 10).forEach(function (l) {
+        html += "<tr><td>" + esc((l.bedrooms === undefined ? "—" : l.bedrooms) + "/" + (l.baths === undefined ? "—" : l.baths)) + "</td><td>" +
+          esc(l.sqft ? Number(l.sqft).toLocaleString() : "—") + "</td><td>" + esc(money0(l.price)) + "</td><td>" +
+          esc(l.price && l.sqft ? (l.price / l.sqft).toFixed(2) : "—") + "</td><td>" + esc(l.last_seen ? String(l.last_seen).slice(5) : "—") + "</td></tr>";
+      });
+      html += "</table>";
+    }
+    html += '<div class="note">Source: Rentometer. Estimates are based on nearby listings and are not a guarantee of achievable rent.</div>';
+    $("rentOut").innerHTML = html;
+  }
+
+  async function checkRent() {
+    var out = $("rentOut");
+    var addr = $("rAddr").value.trim().replace(/,\s*USA$/i, "");
+    if (!addr) { out.innerHTML = '<div class="note">Search a property first, or type an address above.</div>'; return; }
+    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
+    var baths = $("rBaths").value;
+    var bathParam = baths === "Any" ? "Any" : baths + ($("rPlus").checked ? "+" : "");
+    out.innerHTML = '<div class="note">Checking rents…</div>';
+    try {
+      var url = WORKER_URL + "/rent?address=" + encodeURIComponent(addr) + "&bedrooms=" + encodeURIComponent($("rBeds").value) +
+        "&baths=" + encodeURIComponent(bathParam) + "&building_type=" + encodeURIComponent($("rType").value);
+      var res = await fetch(url);
+      var d = await res.json();
+      if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Rent data is unavailable right now.") + "</div>"; return; }
+      renderRent(d);
+    } catch (e) {
+      out.innerHTML = '<div class="err">Could not load rent data.</div>';
     }
   }
 
@@ -310,6 +415,7 @@
   }
 
   renderPicker();
+  $("rentGo").addEventListener("click", checkRent);
   $("go").addEventListener("click", show);
   $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
   $("vRoad").addEventListener("click", function () { setView("roadmap"); });
