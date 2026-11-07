@@ -43,6 +43,10 @@
   #details dt { color: var(--muted); }
   #details dd { margin: 0; font-weight: 500; text-align: right; }
   #details .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  #picker { font-size: 14px; }
+  #picker summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+  #pickList { margin-top: 8px; display: grid; gap: 6px; }
+  label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
   small { color: var(--muted); font-size: 12px; line-height: 1.45; }
   main { flex: 1; position: relative; min-height: 100vh; }
   #map { position: absolute; inset: 0; }
@@ -71,6 +75,7 @@
   <div id="found"></div>
   <div id="acc"></div>
   <div id="details"></div>
+  <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
 
   <div>
     <label>Map view</label>
@@ -105,21 +110,57 @@
   // Address of your Cloudflare Worker (see worker.js). Example: https://deal-check-api.yourname.workers.dev
   var WORKER_URL = "https://deal-check-api.ranjjinisg.workers.dev";
 
-  // Property details shown under the map. To add an attribute, add one line:
-  //   { label: "Name shown", path: "fieldName.in.data", fmt: optional function(value, record) }
+  // ---- Property details catalog ------------------------------------------------
+  // To add an attribute, add ONE line to FIELDS:
+  //   id     short unique name (letters/numbers)
+  //   label  text shown on the page
+  //   path   where the value sits in the data; use dots for nested values, e.g. "features.heatingType"
+  //   fmt    optional function(value, record) that returns the text to show
+  //   on     true = shown by default (visitors can switch fields on/off in "Choose details")
+  // Data availability varies by county; missing values show as a dash.
+  var money = function (v) { return "$" + Number(v).toLocaleString(); };
+  var sqft  = function (v) { return Number(v).toLocaleString() + " sq ft"; };
+  var yesNo = function (v) { return v ? "Yes" : "No"; };
   var FIELDS = [
-    { label: "Property type", path: "propertyType" },
-    { label: "Bedrooms",      path: "bedrooms" },
-    { label: "Bathrooms",     path: "bathrooms" },
-    { label: "Living area",   path: "squareFootage", fmt: function (v) { return Number(v).toLocaleString() + " sq ft"; } },
-    { label: "Lot size",      path: "lotSize",       fmt: function (v) { return Number(v).toLocaleString() + " sq ft"; } },
-    { label: "Garage",        path: "features.garage", fmt: function (v, r) {
+    { id: "type",     label: "Property type", path: "propertyType", on: true },
+    { id: "beds",     label: "Bedrooms",      path: "bedrooms", on: true },
+    { id: "baths",    label: "Bathrooms",     path: "bathrooms", on: true },
+    { id: "area",     label: "Living area",   path: "squareFootage", fmt: sqft, on: true },
+    { id: "lot",      label: "Lot size",      path: "lotSize", fmt: sqft, on: true },
+    { id: "garage",   label: "Garage",        path: "features.garage", on: true, fmt: function (v, r) {
         var f = r.features || {};
         if (!f.garage) return "None";
         return (f.garageSpaces ? f.garageSpaces + "-car " : "") + (f.garageType || "garage").toLowerCase();
     } },
-    { label: "Year built",    path: "yearBuilt" }
+    { id: "year",     label: "Year built",    path: "yearBuilt", on: true },
+
+    // More attributes, off by default. Tick them in "Choose details" or set on: true.
+    { id: "floors",   label: "Floors",             path: "features.floorCount" },
+    { id: "rooms",    label: "Total rooms",        path: "features.roomCount" },
+    { id: "heating",  label: "Heating",            path: "features.heatingType" },
+    { id: "cooling",  label: "Cooling",            path: "features.coolingType" },
+    { id: "roof",     label: "Roof",               path: "features.roofType" },
+    { id: "pool",     label: "Pool",               path: "features.pool", fmt: yesNo },
+    { id: "fire",     label: "Fireplace",          path: "features.fireplace", fmt: yesNo },
+    { id: "hoa",      label: "HOA fee",            path: "hoa.fee", fmt: function (v) { return money(v) + " / month"; } },
+    { id: "salePx",   label: "Last sale price",    path: "lastSalePrice", fmt: money },
+    { id: "saleDt",   label: "Last sale date",     path: "lastSaleDate", fmt: function (v) { return String(v).slice(0, 10); } },
+    { id: "zoning",   label: "Zoning",             path: "zoning" },
+    { id: "subdiv",   label: "Subdivision",        path: "subdivision" },
+    { id: "county",   label: "County",             path: "county" },
+    { id: "apn",      label: "Parcel / assessor ID", path: "assessorID" },
+    { id: "owner",    label: "Owner occupied",     path: "ownerOccupied", fmt: yesNo }
   ];
+
+  // Remember which fields the visitor turned on or off (stored in their own browser only)
+  var enabled = {};
+  FIELDS.forEach(function (f) { enabled[f.id] = !!f.on; });
+  try {
+    var savedPick = JSON.parse(localStorage.getItem("dcFields") || "null");
+    if (savedPick) FIELDS.forEach(function (f) { if (f.id in savedPick) enabled[f.id] = !!savedPick[f.id]; });
+  } catch (e) {}
+
+  var lastRecord = null;
 
   function getPath(obj, path) {
     return path.split(".").reduce(function (o, k) { return (o == null) ? undefined : o[k]; }, obj);
@@ -127,8 +168,44 @@
 
   function esc(t) { var d = document.createElement("div"); d.textContent = String(t); return d.innerHTML; }
 
+  function renderPicker() {
+    var html = "";
+    FIELDS.forEach(function (f) {
+      html += '<label class="pick"><input type="checkbox" data-id="' + esc(f.id) + '"' + (enabled[f.id] ? " checked" : "") + "> " + esc(f.label) + "</label>";
+    });
+    $("pickList").innerHTML = html;
+    Array.prototype.forEach.call($("pickList").querySelectorAll("input"), function (cb) {
+      cb.addEventListener("change", function () {
+        enabled[cb.getAttribute("data-id")] = cb.checked;
+        try { localStorage.setItem("dcFields", JSON.stringify(enabled)); } catch (e) {}
+        renderDetails();
+      });
+    });
+  }
+
+  function renderDetails() {
+    var box = $("details");
+    if (!lastRecord) return;
+    var html = "<h2>Property details</h2><dl>";
+    var count = 0;
+    FIELDS.forEach(function (f) {
+      if (!enabled[f.id]) return;
+      count++;
+      var v = getPath(lastRecord, f.path);
+      var empty = (v === undefined || v === null || v === "");
+      var shown = empty ? "—" : (f.fmt ? f.fmt(v, lastRecord) : v);
+      if (f.id === "garage" && empty) shown = "—";
+      html += "<dt>" + esc(f.label) + "</dt><dd>" + esc(shown) + "</dd>";
+    });
+    html += "</dl>";
+    if (!count) html = '<div class="note">No details selected. Use "Choose details" below.</div>';
+    else html += '<div class="note">Source: public records via RentCast. May differ from listing sites.</div>';
+    box.innerHTML = html;
+  }
+
   async function loadDetails(address) {
     var box = $("details");
+    lastRecord = null;
     if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { box.innerHTML = ""; return; }
     box.innerHTML = '<div class="note">Loading property details…</div>';
     try {
@@ -136,15 +213,8 @@
       var res = await fetch(WORKER_URL + "?address=" + encodeURIComponent(clean));
       var data = await res.json();
       if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
-      var html = "<h2>Property details</h2><dl>";
-      FIELDS.forEach(function (f) {
-        var v = getPath(data, f.path);
-        var shown = (v === undefined || v === null || v === "") ? "—" : (f.fmt ? f.fmt(v, data) : v);
-        if (f.fmt && (v === undefined || v === null)) shown = "—";
-        html += "<dt>" + esc(f.label) + "</dt><dd>" + esc(shown) + "</dd>";
-      });
-      html += '</dl><div class="note">Source: public records via RentCast. May differ from listing sites.</div>';
-      box.innerHTML = html;
+      lastRecord = data;
+      renderDetails();
     } catch (e) {
       box.innerHTML = '<div class="note">Could not load property details.</div>';
     }
@@ -239,6 +309,7 @@
     }
   }
 
+  renderPicker();
   $("go").addEventListener("click", show);
   $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
   $("vRoad").addEventListener("click", function () { setView("roadmap"); });
