@@ -77,38 +77,40 @@ async function rent(url, env) {
   const baths = url.searchParams.get("baths") || "";
   const type = (url.searchParams.get("building_type") || "any").toLowerCase();
   const back = url.searchParams.get("look_back_days") || "";
-  const radius = url.searchParams.get("radius") || "";
+  const radius = url.searchParams.get("radius_miles") || "";
+  const maxSqft = url.searchParams.get("max_sqft") || "";
 
   if (!validAddress(address)) return { status: 400, body: { error: "Please enter a valid US street address." } };
-  if (!/^[1-4]$/.test(beds)) return { status: 400, body: { error: "Bedrooms must be 1 to 4." } };
+  if (!/^[0-6]$/.test(beds)) return { status: 400, body: { error: "Bedrooms must be 0 to 6." } };
   if (!["", "1", "1.5+"].includes(baths)) return { status: 400, body: { error: "Bathrooms must be blank, 1 or 1.5+." } };
   if (!["any", "house", "apartment"].includes(type)) return { status: 400, body: { error: "Building type is not valid." } };
-  if (back && !/^\d{1,4}$/.test(back)) return { status: 400, body: { error: "Look-back is not valid." } };
-  if (radius && !["0.5", "1", "2", "3", "5"].includes(radius)) return { status: 400, body: { error: "Radius is not valid." } };
+  if (back && !(/^\d{2,4}$/.test(back) && +back >= 90 && +back <= 1460)) return { status: 400, body: { error: "Look-back must be 90 to 1460 days." } };
+  if (radius && !(/^\d{1,2}(\.\d)?$/.test(radius) && +radius >= 0.1 && +radius <= 10)) return { status: 400, body: { error: "Radius must be 0.1 to 10 miles." } };
+  if (maxSqft && !(/^\d{3,5}$/.test(maxSqft) && +maxSqft >= 500 && +maxSqft <= 10000)) return { status: 400, body: { error: "Max square feet must be 500 to 10000." } };
   if (!env.RENTOMETER_API_KEY) return { status: 500, body: { error: "Setup problem: the Rentometer key is not saved in the Worker." } };
 
-  const opt = (back ? "&look_back_days=" + back : "") + (radius ? "&radius=" + radius : "");
+  const opt = (back ? "&look_back_days=" + back : "") + (radius ? "&radius_miles=" + radius : "") + (maxSqft ? "&max_sqft=" + maxSqft : "");
   const q = "address=" + encodeURIComponent(address) + "&bedrooms=" + beds + (baths ? "&baths=" + encodeURIComponent(baths) : "") + (type !== "any" ? "&building_type=" + type : "");
   const out = await cached("rent?" + (q + opt).toLowerCase(), async () => {
-    let up, ignored = false;
-    const call = (qs) => fetch("https://www.rentometer.com/api/v1/summary?api_key=" + encodeURIComponent(env.RENTOMETER_API_KEY) + "&" + qs, {
-      headers: { "Accept": "application/json" },
-    });
+    let up;
     try {
-      up = await call(q + opt);
-      // If Rentometer does not accept the optional look-back / radius settings, retry without them
-      if (opt && (up.status === 400 || up.status === 422)) { up = await call(q); ignored = true; }
+      up = await fetch("https://www.rentometer.com/api/v1/summary?api_key=" + encodeURIComponent(env.RENTOMETER_API_KEY) + "&tool=deal-check&" + q + opt, {
+        headers: { "Accept": "application/json" },
+      });
     } catch (e) { return { error: { status: 502, msg: "Rent data service is unreachable." } }; }
     if (up.status === 401 || up.status === 403) return { error: { status: 502, msg: "Rentometer rejected the key (code " + up.status + "). Check the key and that API access is active." } };
     if (up.status === 402 || up.status === 429) return { error: { status: 503, msg: "Rentometer credits or rate limit reached (code " + up.status + ")." } };
     if (!up.ok) {
       let detail = "";
-      try { detail = (await up.text()).replace(/api_key=[^&\s"]+/g, "").slice(0, 200); } catch (e) {}
-      return { error: { status: 502, msg: "Rent data is unavailable right now (code " + up.status + "). " + detail } };
+      try {
+        const t = (await up.text()).replace(/api_key=[^&\s"]+/g, "");
+        try { const j = JSON.parse(t); detail = Array.isArray(j.errors) ? j.errors.map((e) => (e && (e.message || e.detail || e.title)) || (typeof e === "string" ? e : "")).filter(Boolean).join("; ") : ""; if (!detail) detail = t; } catch (e) { detail = t; }
+      } catch (e) {}
+      const hint = up.status === 422 ? " Try a larger radius, a longer look-back, or clear the max square feet." : "";
+      return { error: { status: up.status === 404 || up.status === 422 ? 422 : 502, msg: "Rentometer: " + String(detail).slice(0, 220) + " (code " + up.status + ")." + hint } };
     }
     const data = await up.json();
     if (data && data.error) return { error: { status: 404, msg: String(data.error).slice(0, 160) } };
-    if (ignored && data && typeof data === "object") data.filters_ignored = true;
     return { data, error: null };
   });
   if (out.error) return { status: out.error.status, body: { error: out.error.msg } };

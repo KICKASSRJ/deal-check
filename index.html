@@ -96,16 +96,17 @@
     <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
     <div class="grid2">
       <div class="f"><label for="rBeds">Bedrooms</label>
-        <select id="rBeds"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></div>
+        <select id="rBeds"><option value="0">Studio</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
       <div class="f"><label for="rBaths">Bathrooms</label>
         <select id="rBaths"><option value="">Any</option><option value="1">1</option><option value="1.5+" selected>1.5 or more</option></select></div>
       <div class="f"><label for="rType">Type</label>
         <select id="rType"><option value="any">Any</option><option value="house" selected>House</option><option value="apartment">Apartment</option></select></div>
       <div class="f"><label for="rBack">Look back</label>
-        <select id="rBack"><option value="30">1 month</option><option value="90" selected>3 months</option><option value="180">6 months</option><option value="365">12 months</option></select></div>
+        <select id="rBack"><option value="90" selected>3 months</option><option value="180">6 months</option><option value="365">12 months</option><option value="730">24 months</option></select></div>
       <div class="f"><label for="rRadius">Radius</label>
         <select id="rRadius"><option value="0.5">0.5 mile</option><option value="1" selected>1 mile</option><option value="2">2 miles</option><option value="3">3 miles</option><option value="5">5 miles</option></select></div>
     </div>
+    <div class="f"><label for="rMaxSqft">Max square feet (living area)</label><input id="rMaxSqft" type="text" inputmode="numeric" placeholder="optional, e.g. 2500"></div>
     <details id="rPick"><summary>Choose results to show</summary><div id="rPickList"></div></details>
     <button id="rentGo">Check rents</button>
     <div id="rentOut"></div>
@@ -266,8 +267,10 @@
     $("rAddr").value = lastAddress;
     var r = lastRecord;
     if (!r) return;
-    // Rentometer accepts 1 to 4 bedrooms, and baths of 1 or 1.5+ only
-    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(1, Math.min(4, Math.round(r.bedrooms))));
+    // Bathrooms: Any, 1 or 1.5+
+    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(0, Math.min(6, Math.round(r.bedrooms))));
+    // Living area from the property record is used as the maximum square footage (editable; clear it for no limit)
+    $("rMaxSqft").value = r.squareFootage ? String(Math.max(500, Math.min(10000, Math.round(r.squareFootage)))) : "";
     if (typeof r.bathrooms === "number") $("rBaths").value = r.bathrooms >= 1.5 ? "1.5+" : "1";
   }
 
@@ -316,16 +319,13 @@
     RENT_FIELDS.forEach(function (f) { if (rentOn[f.id]) html += f.html(d); });
     html += "</dl>";
     // Say so when Rentometer used a different radius or look-back than requested
-    if (d.filters_ignored) {
-      html += '<div class="note">Rentometer did not accept the radius and look-back settings for this search, so it used its own automatic values.</div>';
-    } else {
-      if (d.radius_miles !== undefined && Number(d.radius_miles) > askedR + 0.001)
-        html += '<div class="note">You chose ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', but Rentometer searched ' + esc(d.radius_miles) + ' miles. It widens the radius automatically (smart radius) when there are too few nearby listings, and it may not apply a custom radius.</div>';
-      if (d.look_back_days !== undefined && Number(d.look_back_days) > askedB)
-        html += '<div class="note">Not enough listings in the last ' + esc(askedB) + ' days, so Rentometer looked back ' + esc(d.look_back_days) + ' days.</div>';
-    }
+    if (d.radius_miles !== undefined && d.radius_miles !== null && Math.abs(Number(d.radius_miles) - askedR) > 0.001)
+      html += '<div class="note">You chose ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', but Rentometer used ' + esc(d.radius_miles) + ' miles. It switches to its Smart Radius when the chosen radius holds more listings than one analysis can use.</div>';
+    if (d.look_back_days !== undefined && d.look_back_days !== null && Number(d.look_back_days) !== askedB)
+      html += '<div class="note">Rentometer used a look-back of ' + esc(d.look_back_days) + ' days.</div>';
+    if (d.max_sqft) html += '<div class="note">Limited to listings up to ' + esc(Number(d.max_sqft).toLocaleString()) + ' sq ft. Listings with no recorded size are excluded.</div>';
     if (d.quickview_url) html += '<div class="note"><a href="' + esc(d.quickview_url) + '" target="_blank" rel="noopener">Open full Rentometer report</a></div>';
-    html += '<div class="note">Source: Rentometer. Based on nearby listings with the bedrooms, bathrooms and type chosen above (it cannot filter by square footage). Not a guarantee of achievable rent.</div>';
+    html += '<div class="note">Source: Rentometer. Based on nearby listings with the bedrooms, bathrooms and type chosen above and the limits above. Not a guarantee of achievable rent.</div>';
     $("rentOut").innerHTML = html;
   }
 
@@ -339,7 +339,9 @@
     try {
       var url = WORKER_URL + "/rent?address=" + encodeURIComponent(addr) + "&bedrooms=" + encodeURIComponent($("rBeds").value) +
         "&baths=" + encodeURIComponent(bathParam) + "&building_type=" + encodeURIComponent($("rType").value) +
-        "&look_back_days=" + encodeURIComponent($("rBack").value) + "&radius=" + encodeURIComponent($("rRadius").value);
+        "&look_back_days=" + encodeURIComponent($("rBack").value) + "&radius_miles=" + encodeURIComponent($("rRadius").value);
+      var ms = Number(String($("rMaxSqft").value).replace(/[^0-9]/g, "")) || 0;
+      if (ms >= 500 && ms <= 10000) url += "&max_sqft=" + ms;
       var res = await fetch(url);
       var d = await res.json();
       if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Rent data is unavailable right now.") + "</div>"; return; }
