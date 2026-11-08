@@ -108,7 +108,7 @@
     box.innerHTML = '<div class="note">Loading property details…</div>';
     try {
       var clean = address.replace(/,\s*USA$/i, "");
-      var res = await fetch(WORKER_URL + "?address=" + encodeURIComponent(clean));
+      var res = await apiGet(WORKER_URL + "?address=" + encodeURIComponent(clean));
       var data = await res.json();
       if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
       lastRecord = data;
@@ -206,7 +206,7 @@
         "&look_back_days=" + encodeURIComponent($("rBack").value) + "&radius_miles=" + encodeURIComponent($("rRadius").value);
       var ms = Number(String($("rMaxSqft").value).replace(/[^0-9]/g, "")) || 0;
       if (ms >= 500 && ms <= 10000) url += "&max_sqft=" + ms;
-      var res = await fetch(url);
+      var res = await apiGet(url);
       var d = await res.json();
       if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Rent data is unavailable right now.") + "</div>"; return; }
       renderRent(d);
@@ -289,7 +289,7 @@
     btn.disabled = true;
     out.innerHTML = '<div class="note">Researching the neighbourhood (crime, income, schools, market data…). This can take a minute. Please keep this page open.</div>';
     try {
-      var res = await fetch(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
+      var res = await apiGet(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
       var d = await res.json();
       if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Neighborhood rating is unavailable right now.") + "</div>"; }
       else renderNrs(d);
@@ -300,6 +300,12 @@
   }
 
   var $ = function (id) { return document.getElementById(id); };
+  // Calls to our server. If the owner has saved an owner key (Privacy > Owner access), send it so usage limits are skipped.
+  function apiGet(url) {
+    var h = {};
+    try { var k = localStorage.getItem("dcOwner"); if (k) h["X-Owner-Key"] = k; } catch (e) {}
+    return fetch(url, { headers: h });
+  }
   var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
 
 
@@ -688,13 +694,20 @@
   // ===========================================================================
   // Privacy controls
   // ===========================================================================
-  var STORE_KEYS = ["dcWeights", "dcFields", "dcRentFields", "dcRecent", "dcGeo", "dcHistory", "dcSave", "dcNotice", "dcHistMig"];
+  var STORE_KEYS = ["dcOwner", "dcWeights", "dcFields", "dcRentFields", "dcRecent", "dcGeo", "dcHistory", "dcSave", "dcNotice", "dcHistMig"];
   $("saveHist").checked = saveOn();
   $("saveHist").addEventListener("change", function () {
     try { localStorage.setItem("dcSave", $("saveHist").checked ? "1" : "0"); } catch (e) {}
     renderHistList();
   });
-  $("privBtn").addEventListener("click", function () { $("saveHist").checked = saveOn(); openDlg($("privDlg")); });
+  function ownerState() { var on = false; try { on = !!localStorage.getItem("dcOwner"); } catch (e) {} $("ownerState").textContent = on ? "Owner key saved on this device. Usage limits are off for you." : "Not set. Normal usage limits apply."; }
+  $("ownerSave").addEventListener("click", function () {
+    var v = $("ownerKey").value.trim(); if (!v) return;
+    try { localStorage.setItem("dcOwner", v); } catch (e) {}
+    $("ownerKey").value = ""; ownerState();
+  });
+  $("ownerClear").addEventListener("click", function () { try { localStorage.removeItem("dcOwner"); } catch (e) {} ownerState(); });
+  $("privBtn").addEventListener("click", function () { $("saveHist").checked = saveOn(); ownerState(); openDlg($("privDlg")); });
   $("privClose").addEventListener("click", function () { $("privDlg").close(); });
   $("dlData").addEventListener("click", function () {
     var settings = {};

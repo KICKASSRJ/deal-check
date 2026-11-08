@@ -15,6 +15,21 @@
 
 import NRS_PROMPT from "./nrs-prompt.js";
 
+// ---- Owner access -------------------------------------------------------------
+// Add a Secret named OWNER_KEY. The site sends it in the X-Owner-Key header when the owner has entered it
+// under Privacy > Owner access. Requests with the right key skip every usage limit.
+const OWNER = { owner: true };
+async function isOwner(request, env) {
+  const k = request.headers.get("X-Owner-Key");
+  if (!k || !env.OWNER_KEY) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(k)), crypto.subtle.digest("SHA-256", enc.encode(String(env.OWNER_KEY)))]);
+  const x = new Uint8Array(a), y = new Uint8Array(b);
+  let d = 0;
+  for (let i = 0; i < x.length; i++) d |= x[i] ^ y[i];   // compare without leaking where they differ
+  return d === 0;
+}
+
 // ---- Usage limits ------------------------------------------------------------
 // Counters live in a Durable Object so every copy of the Worker shares them.
 // Only requests that cost money (cache misses) count against the daily limits.
@@ -63,6 +78,7 @@ async function allow(env, name, limit, win) {
 }
 // Returns null if allowed, otherwise an error object for the visitor
 async function gate(env, ip, kind) {
+  if (ip === OWNER) return null;
   const L = limitsFor(env);
   const rules = kind === "nrs"
     ? [["nrs-h:" + ip, L.nrsIpHour, 3600, "You can rate " + L.nrsIpHour + " new addresses per hour."], ["nrs-d:" + ip, L.nrsIpDay, 86400, "You have reached today's limit of " + L.nrsIpDay + " new ratings."], ["nrs-site", L.nrsSiteDay, 86400, null]]
@@ -82,7 +98,7 @@ function cors(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, X-Owner-Key",
     "Vary": "Origin",
   };
 }
@@ -320,8 +336,8 @@ export default {
     if (request.method !== "GET") return reply({ error: "Method not allowed." }, 405, allowed);
 
     // Rate limit per visitor IP
-    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    const m = await allow(env, "min:" + ip, limitsFor(env).ipMin, 60);
+    const ip = (await isOwner(request, env)) ? OWNER : (request.headers.get("CF-Connecting-IP") || "unknown");
+    const m = ip === OWNER ? { ok: true } : await allow(env, "min:" + ip, limitsFor(env).ipMin, 60);
     if (!m.ok) return reply({ error: "Too many requests. Please wait a minute." }, 429, allowed, m.retry);
 
     const url = new URL(request.url);

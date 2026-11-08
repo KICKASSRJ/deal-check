@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108c">
+<link rel="stylesheet" href="style.css?v=20261108d">
 </head>
 <body class="home">
 
@@ -195,6 +195,16 @@
       <button type="button" id="dlData">Download my data</button>
       <button type="button" id="delData" class="danger">Delete all my data</button>
     </div>
+    <details>
+      <summary>Owner access</summary>
+      <p style="margin-top:6px">For the site owner only. Enter your owner key to switch off usage limits on this device.</p>
+      <div class="dlg-tools" style="margin-top:8px">
+        <input id="ownerKey" type="password" autocomplete="off" placeholder="Owner key" aria-label="Owner key">
+        <button type="button" id="ownerSave">Save</button>
+        <button type="button" id="ownerClear" class="quiet">Remove</button>
+      </div>
+      <p id="ownerState" style="margin-top:6px"></p>
+    </details>
     <p>Full details are in the <a href="privacy.html">privacy policy</a> and <a href="terms.html">terms of use</a>.</p>
   </div>
 </dialog>
@@ -204,6 +214,6 @@
   <button type="button" id="noticeOk">Got it</button>
 </div>
 
-<script src="app.js?v=20261108c"></script>
+<script src="app.js?v=20261108d"></script>
 </body>
 </html>
