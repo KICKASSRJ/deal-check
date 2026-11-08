@@ -236,10 +236,14 @@ async function askGemini(env, address, type) {
   } catch (e) { return { error: { status: 502, msg: "The rating service is unreachable." } }; }
   if (!res.ok) {
     let detail = "";
-    try { detail = (await res.text()).replace(/AIza[A-Za-z0-9_-]+/g, "").slice(0, 220); } catch (e) {}
+    try { detail = (await res.text()).replace(/AIza[A-Za-z0-9_-]+/g, "").slice(0, 600); } catch (e) {}
     if (res.status === 400 && /API key/i.test(detail)) return { error: { status: 502, msg: "Google rejected the Gemini API key. Check it in the Worker settings." } };
     if (res.status === 401 || res.status === 403) return { error: { status: 502, msg: "Google rejected the Gemini API key (code " + res.status + ")." } };
-    if (res.status === 429 || res.status === 503) return { error: { status: 503, msg: "The rating service is busy or its free quota is used up (code " + res.status + "). Try again later." } };
+    if (res.status === 429 || res.status === 503) {
+      let why = "";
+      try { why = String((JSON.parse(detail + "").error || {}).message || ""); } catch (e) { why = detail.replace(/\s+/g, " "); }
+      return { error: { status: 503, msg: "The rating service is busy or its quota is used up (code " + res.status + "). " + why.replace(/\s+/g, " ").slice(0, 200) } };
+    }
     return { error: { status: 502, msg: "The rating service returned code " + res.status + ". " + detail } };
   }
   return { data: await res.json() };
