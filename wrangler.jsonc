@@ -4,5 +4,10 @@
   "compatibility_date": "2025-01-01",
   "vars": {
     "ALLOWED_ORIGIN": "https://kickassrj.github.io"
-  }
+  },
+  // Shared usage counters (see Limiter in worker.js)
+  "durable_objects": {
+    "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Limiter"] }]
 }

@@ -8,12 +8,75 @@
 //          /rent   rent summary (Rentometer)
 //          /neighborhood   US-NRS neighborhood rating (Gemini + Google Search)
 // Extra setting for /neighborhood:  GEMINI_API_KEY (Secret)
+//
+// Usage limits (shared across all Worker copies through the LIMITER Durable Object, see wrangler.jsonc).
+// Optional Text variables to change them:  LIMIT_IP_PER_MIN, LIMIT_NRS_IP_DAY, LIMIT_NRS_SITE_DAY,
+//   LIMIT_RENT_IP_DAY, LIMIT_RENT_SITE_DAY, LIMIT_PROP_IP_DAY, LIMIT_PROP_SITE_DAY
 
 import NRS_PROMPT from "./nrs-prompt.js";
 
-const RATE_LIMIT = 10;          // lookups allowed per visitor...
-const RATE_WINDOW_MS = 60000;   // ...per minute
-const hits = new Map();         // simple per-instance counter
+// ---- Usage limits ------------------------------------------------------------
+// Counters live in a Durable Object so every copy of the Worker shares them.
+// Only requests that cost money (cache misses) count against the daily limits.
+const num = (v, d) => { const n = Number(v); return n > 0 ? Math.floor(n) : d; };
+const limitsFor = (env) => ({
+  ipMin: num(env.LIMIT_IP_PER_MIN, 20),
+  nrsIpHour: 3,
+  nrsIpDay: num(env.LIMIT_NRS_IP_DAY, 10),    nrsSiteDay: num(env.LIMIT_NRS_SITE_DAY, 300),
+  rentIpDay: num(env.LIMIT_RENT_IP_DAY, 40),  rentSiteDay: num(env.LIMIT_RENT_SITE_DAY, 600),
+  propIpDay: num(env.LIMIT_PROP_IP_DAY, 80),  propSiteDay: num(env.LIMIT_PROP_SITE_DAY, 1000),
+});
+
+// One counter per name, fixed window starting at its first hit; clears itself when the window ends
+export class Limiter {
+  constructor(state) { this.state = state; }
+  async fetch(request) {
+    const u = new URL(request.url);
+    const limit = Number(u.searchParams.get("limit")) || 1, win = (Number(u.searchParams.get("win")) || 60) * 1000;
+    const now = Date.now();
+    let w = await this.state.storage.get("w");
+    if (!w || now - w.start >= win) w = { start: now, n: 0 };
+    if (w.n >= limit) return Response.json({ ok: false, retry: Math.max(1, Math.ceil((w.start + win - now) / 1000)) });
+    w.n++;
+    await this.state.storage.put("w", w);
+    await this.state.storage.setAlarm(w.start + win + 1000);
+    return Response.json({ ok: true, left: limit - w.n });
+  }
+  async alarm() { await this.state.storage.deleteAll(); }
+}
+
+const mem = new Map();   // fallback if the Durable Object is not set up: per-copy counters (weaker)
+function memAllow(name, limit, win) {
+  const now = Date.now(); let w = mem.get(name);
+  if (!w || now - w.start >= win * 1000) w = { start: now, n: 0 };
+  if (mem.size > 5000) mem.clear();
+  if (w.n >= limit) return { ok: false, retry: Math.ceil((w.start + win * 1000 - now) / 1000) };
+  w.n++; mem.set(name, w); return { ok: true };
+}
+async function allow(env, name, limit, win) {
+  if (!env.LIMITER) return memAllow(name, limit, win);
+  try {
+    const stub = env.LIMITER.get(env.LIMITER.idFromName(name));
+    const r = await stub.fetch("https://limiter/?limit=" + limit + "&win=" + win);
+    return await r.json();
+  } catch (e) { return memAllow(name, limit, win); }
+}
+// Returns null if allowed, otherwise an error object for the visitor
+async function gate(env, ip, kind) {
+  const L = limitsFor(env);
+  const rules = kind === "nrs"
+    ? [["nrs-h:" + ip, L.nrsIpHour, 3600, "You can rate " + L.nrsIpHour + " new addresses per hour."], ["nrs-d:" + ip, L.nrsIpDay, 86400, "You have reached today's limit of " + L.nrsIpDay + " new ratings."], ["nrs-site", L.nrsSiteDay, 86400, null]]
+    : kind === "rent"
+    ? [["rent-d:" + ip, L.rentIpDay, 86400, "You have reached today's limit of " + L.rentIpDay + " new rent checks."], ["rent-site", L.rentSiteDay, 86400, null]]
+    : [["prop-d:" + ip, L.propIpDay, 86400, "You have reached today's limit of " + L.propIpDay + " new property lookups."], ["prop-site", L.propSiteDay, 86400, null]];
+  for (const [name, limit, win, msg] of rules) {
+    const r = await allow(env, name, limit, win);
+    if (!r.ok) return msg
+      ? { status: 429, msg: msg + " Please try again later.", retry: r.retry }
+      : { status: 503, msg: "This service has reached its daily capacity. Please try again tomorrow.", retry: r.retry };
+  }
+  return null;
+}
 
 function cors(origin) {
   return {
@@ -33,10 +96,10 @@ const SECURE = {
   "X-Frame-Options": "DENY",
 };
 
-function reply(body, status, origin) {
+function reply(body, status, origin, retry) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...SECURE, ...cors(origin) },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...(retry ? { "Retry-After": String(retry) } : {}), ...SECURE, ...cors(origin) },
   });
 }
 
@@ -59,12 +122,14 @@ async function cached(key, producer, ttl) {
 }
 
 // ---- RentCast: property details ------------------------------------------
-async function property(url, env) {
+async function property(url, env, ip) {
   const address = (url.searchParams.get("address") || "").trim();
   if (!validAddress(address)) return { status: 400, body: { error: "Please enter a valid US street address." } };
   if (!env.RENTCAST_API_KEY) return { status: 500, body: { error: "Setup problem: the RentCast key is not saved in the Worker." } };
 
   const out = await cached("property?address=" + encodeURIComponent(address.toLowerCase()), async () => {
+    const blocked = await gate(env, ip, "prop");
+    if (blocked) return { error: { status: blocked.status, msg: blocked.msg, retry: blocked.retry } };
     let up;
     try {
       up = await fetch("https://api.rentcast.io/v1/properties?address=" + encodeURIComponent(address), {
@@ -79,12 +144,12 @@ async function property(url, env) {
     if (!record) return { error: { status: 404, msg: "No public record found for this address." } };
     return { data: record, error: null };
   });
-  if (out.error) return { status: out.error.status, body: { error: out.error.msg } };
+  if (out.error) return { status: out.error.status, body: { error: out.error.msg }, retry: out.error.retry };
   return { status: 200, body: out.data };
 }
 
 // ---- Rentometer: rent summary ---------------------------------------------
-async function rent(url, env) {
+async function rent(url, env, ip) {
   const address = (url.searchParams.get("address") || "").trim();
   const beds = url.searchParams.get("bedrooms") || "";
   const baths = url.searchParams.get("baths") || "";
@@ -105,6 +170,8 @@ async function rent(url, env) {
   const opt = (back ? "&look_back_days=" + back : "") + (radius ? "&radius_miles=" + radius : "") + (maxSqft ? "&max_sqft=" + maxSqft : "");
   const q = "address=" + encodeURIComponent(address) + "&bedrooms=" + beds + (baths ? "&baths=" + encodeURIComponent(baths) : "") + (type !== "any" ? "&building_type=" + type : "");
   const out = await cached("rent?" + (q + opt).toLowerCase(), async () => {
+    const blocked = await gate(env, ip, "rent");
+    if (blocked) return { error: { status: blocked.status, msg: blocked.msg, retry: blocked.retry } };
     let up;
     try {
       up = await fetch("https://www.rentometer.com/api/v1/summary?api_key=" + encodeURIComponent(env.RENTOMETER_API_KEY) + "&tool=deal-check&" + q + opt, {
@@ -126,7 +193,7 @@ async function rent(url, env) {
     if (data && data.error) return { error: { status: 404, msg: String(data.error).slice(0, 160) } };
     return { data, error: null };
   });
-  if (out.error) return { status: out.error.status, body: { error: out.error.msg } };
+  if (out.error) return { status: out.error.status, body: { error: out.error.msg }, retry: out.error.retry };
   return { status: 200, body: out.data };
 }
 
@@ -134,8 +201,6 @@ async function rent(url, env) {
 const NRS_WEIGHTS = [20, 15, 10, 10, 10, 10, 10, 5, 5, 5];
 const NRS_NAMES = ["Crime & Safety", "Household Income", "Schools", "Property Maintenance", "Owner Occupancy", "Appreciation Potential", "Rental Demand", "Amenities & Connectivity", "Employment Stability", "Resale Liquidity"];
 const NRS_GRADES = [[95, "A+", "Exceptional"], [90, "A", "Excellent"], [85, "A-", "Very Good"], [80, "B+", "Above Average"], [75, "B", "Good"], [70, "B-", "Fairly Good"], [65, "C+", "Moderate"], [60, "C", "Average"], [55, "C-", "Below Average"], [40, "D", "Weak"], [0, "F", "Poor"]];
-const NRS_LIMIT = 3, NRS_WINDOW_MS = 3600000;   // 3 new ratings per visitor per hour (each one costs API credit)
-const nrsHits = new Map();
 
 const NRS_FORMAT = `Do your live research with Google Search. Then reply with ONLY one JSON object (no markdown fences, no commentary) with exactly these keys. Do NOT calculate weighted points, totals or the grade: they are calculated by the application from your factor scores.
 {
@@ -194,11 +259,8 @@ async function neighborhood(url, env, ip) {
   if (hit) return { status: 200, body: await hit.json() };
 
   // Stricter limit for uncached ratings, because each one costs API credit
-  const now = Date.now();
-  const recent = (nrsHits.get(ip) || []).filter((t) => now - t < NRS_WINDOW_MS);
-  if (recent.length >= NRS_LIMIT) return { status: 429, body: { error: "Rating limit reached (" + NRS_LIMIT + " new addresses per hour). Please try again later." } };
-  recent.push(now); nrsHits.set(ip, recent);
-  if (nrsHits.size > 2000) nrsHits.clear();
+  const blocked = await gate(env, ip, "nrs");
+  if (blocked) return { status: blocked.status, body: { error: blocked.msg }, retry: blocked.retry };
 
   const got = await askGemini(env, address, type);
   if (got.error) return { status: got.error.status, body: { error: got.error.msg } };
@@ -252,20 +314,16 @@ export default {
 
     // Rate limit per visitor IP
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-    const now = Date.now();
-    const recent = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS);
-    if (recent.length >= RATE_LIMIT) return reply({ error: "Too many requests. Please wait a minute." }, 429, allowed);
-    recent.push(now);
-    hits.set(ip, recent);
-    if (hits.size > 5000) hits.clear();
+    const m = await allow(env, "min:" + ip, limitsFor(env).ipMin, 60);
+    if (!m.ok) return reply({ error: "Too many requests. Please wait a minute." }, 429, allowed, m.retry);
 
     const url = new URL(request.url);
     let result;
-    if (url.pathname === "/rent") result = await rent(url, env);
+    if (url.pathname === "/rent") result = await rent(url, env, ip);
     else if (url.pathname === "/neighborhood") result = await neighborhood(url, env, ip);
-    else if (url.pathname === "/" || url.pathname === "") result = await property(url, env);
+    else if (url.pathname === "/" || url.pathname === "") result = await property(url, env, ip);
     else result = { status: 404, body: { error: "Not found." } };
 
-    return reply(result.body, result.status, allowed);
+    return reply(result.body, result.status, allowed, result.retry);
   },
 };
