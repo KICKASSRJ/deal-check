@@ -216,18 +216,21 @@ const NRS_FORMAT = `Do your live research with Google Search. Then reply with ON
 }
 Keep each evidence text under 900 characters. Never fabricate data.`;
 
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";   // override with a NRS_MODEL variable when Google retires it
+
 async function askGemini(env, address, type) {
   const prompt = "Property Address: " + address + "\nProperty Type: " + type + "\nEvaluation Date: " + new Date().toISOString().slice(0, 10) + "\n\n" + NRS_FORMAT;
   let res;
   try {
-    res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (env.NRS_MODEL || "gemini-2.5-flash-lite") + ":generateContent", {
+    res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (env.NRS_MODEL || DEFAULT_MODEL) + ":generateContent", {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: NRS_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         tools: [{ google_search: {} }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+        // Gemini 3 models work best at their default temperature; older ones get a low one for steadier scores
+        generationConfig: { ...(/^gemini-3/.test(env.NRS_MODEL || DEFAULT_MODEL) ? {} : { temperature: 0.2 }), maxOutputTokens: 16384 },
       }),
     });
   } catch (e) { return { error: { status: 502, msg: "The rating service is unreachable." } }; }
@@ -291,7 +294,7 @@ async function neighborhood(url, env, ip) {
   const body = {
     property: { address: cleanStr(p.address || address), neighborhood: cleanStr(p.neighborhood), city: cleanStr(p.city), county: cleanStr(p.county), zip: cleanStr(p.zip, 20), census_tract: cleanStr(p.census_tract, 60), boundaries: cleanStr(p.boundaries, 500), evaluation_date: cleanStr(p.evaluation_date || new Date().toISOString().slice(0, 10), 40) },
     total, grade: g[1], classification: g[2], confidence: conf, confidence_note: cleanStr(r.confidence_note, 600),
-    sources_consulted: consulted, search_html: searchHtml, model: env.NRS_MODEL || "gemini-2.5-flash-lite",
+    sources_consulted: consulted, search_html: searchHtml, model: env.NRS_MODEL || DEFAULT_MODEL,
     factors, strengths: cleanList(r.strengths, 5), weaknesses: cleanList(r.weaknesses, 5),
     outlook: { homeownership: cleanStr(o.homeownership, 600), appreciation: cleanStr(o.appreciation, 600), rental_investment: cleanStr(o.rental_investment, 600), tenant_demand: cleanStr(o.tenant_demand, 600), resale_liquidity: cleanStr(o.resale_liquidity, 600), economic_resilience: cleanStr(o.economic_resilience, 600) },
     verdict: { long_term_ownership: cleanStr(v.long_term_ownership, 500), rental_investment: cleanStr(v.rental_investment, 500), appreciation: cleanStr(v.appreciation, 500), biggest_risks: cleanList(v.biggest_risks, 3), recommendation: cleanStr(v.recommendation, 900) },

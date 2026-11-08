@@ -91,18 +91,13 @@
       <div><b id="kGrade">—</b><span>Neighbourhood</span></div>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="Report sections">
-      <button type="button" role="tab" id="tabProp" aria-controls="pProp" aria-selected="true">Property</button>
-      <button type="button" role="tab" id="tabRent" aria-controls="pRent" aria-selected="false" tabindex="-1">Rent</button>
-      <button type="button" role="tab" id="tabNrs" aria-controls="pNrs" aria-selected="false" tabindex="-1">Neighbourhood</button>
-    </div>
 
-    <section class="tabpanel" id="pProp" role="tabpanel" aria-labelledby="tabProp">
+    <section class="block" id="pProp">
       <div id="details"></div>
       <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
     </section>
 
-    <section class="tabpanel" id="pRent" role="tabpanel" aria-labelledby="tabRent" hidden>
+    <section class="block" id="pRent">
       <div id="rent" class="tabpanel">
         <h2>Market rent</h2>
         <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
@@ -125,7 +120,7 @@
       </div>
     </section>
 
-    <section class="tabpanel" id="pNrs" role="tabpanel" aria-labelledby="tabNrs" hidden>
+    <section class="block" id="pNrs">
       <div id="nrs" class="tabpanel">
         <h2>Neighbourhood rating</h2>
         <div class="note">A score out of 100 for the neighbourhood only, from ten weighted factors, researched live with Gemini and Google Search. It takes about a minute and is not a rating of the property as an investment.</div>

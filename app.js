@@ -257,7 +257,7 @@
     }
     h += "<details open><summary>Final verdict</summary>" + pe("Long-term ownership", v.long_term_ownership) + pe("Rental investment", v.rental_investment) + pe("Appreciation", v.appreciation) +
       "<p><b>Three biggest risks:</b></p>" + ul(v.biggest_risks) + pe("Recommendation", v.recommendation) + "</details>";
-    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched with Gemini 2.5 Flash-Lite and Google Search, so it is less thorough than the full Claude report and may contain errors. Check the sources before relying on it.</div>';
+    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched with Gemini and Google Search, so it is less thorough than the full Claude report and may contain errors. Check the sources before relying on it.</div>';
     $("nrsOut").innerHTML = h;
     // Google requires its "Search suggestions" to be shown with grounded results; render them in a sandboxed frame
     if (d.search_html) {
@@ -532,26 +532,10 @@
     $("kGrade").textContent = lastGrade || "—";
   }
 
-  var TABS = [["tabProp", "pProp"], ["tabRent", "pRent"], ["tabNrs", "pNrs"]];
-  function selectTab(tabId, focus) {
-    TABS.forEach(function (t) {
-      var on = t[0] === tabId;
-      $(t[0]).setAttribute("aria-selected", on ? "true" : "false");
-      $(t[0]).tabIndex = on ? 0 : -1;
-      $(t[1]).hidden = !on;
-      if (on && focus) $(t[0]).focus();
-    });
-  }
-  TABS.forEach(function (t, i) {
-    $(t[0]).addEventListener("click", function () { selectTab(t[0]); });
-    $(t[0]).addEventListener("keydown", function (e) {
-      var d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (d) { e.preventDefault(); selectTab(TABS[(i + d + TABS.length) % TABS.length][0], true); }
-    });
-  });
-  $("kBeds").parentNode.addEventListener("click", function () { selectTab("tabProp"); });
-  $("kRent").parentNode.addEventListener("click", function () { selectTab("tabRent"); });
-  $("kGrade").parentNode.addEventListener("click", function () { selectTab("tabNrs"); });
+  function jump(id) { $(id).scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }
+  $("kBeds").parentNode.addEventListener("click", function () { jump("pProp"); });
+  $("kRent").parentNode.addEventListener("click", function () { jump("pRent"); });
+  $("kGrade").parentNode.addEventListener("click", function () { jump("pNrs"); });
 
   // ===========================================================================
   // Search history (stored in this browser only)
