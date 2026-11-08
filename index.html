@@ -136,9 +136,9 @@
   </div>
 
   <div id="nrs">
-    <h2>Neighborhood rating (US-NRS)</h2>
-    <div class="note" style="color:var(--muted);font-size:12px">AI-researched score out of 100 for the neighborhood only, not the property as an investment. Takes about 1–2 minutes.</div>
-    <button id="nrsGo">Rate neighborhood</button>
+    <h2>Neighbourhood rating (US-NRS)</h2>
+    <div class="note" style="color:var(--muted);font-size:12px">AI-researched (Gemini + Google Search) score out of 100 for the neighbourhood only, not the property as an investment. Takes about a minute.</div>
+    <button id="nrsGo">Rate neighbourhood</button>
     <div id="nrsOut"></div>
   </div>
 
@@ -414,10 +414,24 @@
     h += "<details><summary>Investment outlook</summary>" + pe("Long-term homeownership", o.homeownership) + pe("Appreciation", o.appreciation) + pe("Rental investment", o.rental_investment) +
       pe("Tenant demand", o.tenant_demand) + pe("Resale liquidity", o.resale_liquidity) + pe("Economic resilience", o.economic_resilience) + "</details>";
     var v = d.verdict || {};
+    if ((d.sources_consulted || []).length) {
+      h += "<details><summary>Sources consulted</summary><ul>";
+      d.sources_consulted.forEach(function (s) { var u = safeUrl(s.uri); if (u) h += '<li><a href="' + u + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || u) + "</a></li>"; });
+      h += "</ul></details>";
+    }
     h += "<details open><summary>Final verdict</summary>" + pe("Long-term ownership", v.long_term_ownership) + pe("Rental investment", v.rental_investment) + pe("Appreciation", v.appreciation) +
       "<p><b>Three biggest risks:</b></p>" + ul(v.biggest_risks) + pe("Recommendation", v.recommendation) + "</details>";
-    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched from public web sources and may contain errors; check the cited sources before relying on it.</div>';
+    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched with Gemini 2.5 Flash-Lite and Google Search, so it is less thorough than the full Claude report and may contain errors. Check the sources before relying on it.</div>';
     $("nrsOut").innerHTML = h;
+    // Google requires its "Search suggestions" to be shown with grounded results; render them in a sandboxed frame
+    if (d.search_html) {
+      var fr = document.createElement("iframe");
+      fr.setAttribute("sandbox", "allow-popups allow-popups-to-escape-sandbox");
+      fr.style.cssText = "width:100%;height:72px;border:0;margin-top:8px";
+      fr.title = "Google Search suggestions";
+      fr.srcdoc = '<base target="_blank">' + d.search_html;
+      $("nrsOut").appendChild(fr);
+    }
   }
 
   async function checkNrs() {
@@ -428,7 +442,7 @@
     var t = lastRecord && lastRecord.propertyType;
     var type = ["Single Family", "Townhouse", "Condo", "Multi-family"].indexOf(t) >= 0 ? t : "Single Family";
     btn.disabled = true;
-    out.innerHTML = '<div class="note">Researching the neighborhood (crime, income, schools, market data…). This takes about 1–2 minutes. Please keep this page open.</div>';
+    out.innerHTML = '<div class="note">Researching the neighbourhood (crime, income, schools, market data…). This can take a minute. Please keep this page open.</div>';
     try {
       var res = await fetch(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
       var d = await res.json();

@@ -6,8 +6,8 @@
 //
 // Routes:  /       property details (RentCast)
 //          /rent   rent summary (Rentometer)
-//          /neighborhood   US-NRS neighborhood rating (Claude API + web search)
-// Extra setting for /neighborhood:  ANTHROPIC_API_KEY (Secret)
+//          /neighborhood   US-NRS neighborhood rating (Gemini + Google Search)
+// Extra setting for /neighborhood:  GEMINI_API_KEY (Secret)
 
 import NRS_PROMPT from "./nrs-prompt.js";
 
@@ -121,18 +121,18 @@ async function rent(url, env) {
   return { status: 200, body: out.data };
 }
 
-// ---- Neighborhood rating (US-NRS) via Claude + web search -------------------
+// ---- Neighborhood rating (US-NRS) via Gemini 2.5 Flash-Lite + Google Search ---
 const NRS_WEIGHTS = [20, 15, 10, 10, 10, 10, 10, 5, 5, 5];
 const NRS_NAMES = ["Crime & Safety", "Household Income", "Schools", "Property Maintenance", "Owner Occupancy", "Appreciation Potential", "Rental Demand", "Amenities & Connectivity", "Employment Stability", "Resale Liquidity"];
 const NRS_GRADES = [[95, "A+", "Exceptional"], [90, "A", "Excellent"], [85, "A-", "Very Good"], [80, "B+", "Above Average"], [75, "B", "Good"], [70, "B-", "Fairly Good"], [65, "C+", "Moderate"], [60, "C", "Average"], [55, "C-", "Below Average"], [40, "D", "Weak"], [0, "F", "Poor"]];
 const NRS_LIMIT = 3, NRS_WINDOW_MS = 3600000;   // 3 new ratings per visitor per hour (each one costs API credit)
 const nrsHits = new Map();
 
-const NRS_FORMAT = `Do your live research with the web search tool. Then reply with ONLY one JSON object (no markdown fences, no commentary) with exactly these keys. Do NOT calculate weighted points, totals or the grade: they are calculated by the application from your factor scores.
+const NRS_FORMAT = `Do your live research with Google Search. Then reply with ONLY one JSON object (no markdown fences, no commentary) with exactly these keys. Do NOT calculate weighted points, totals or the grade: they are calculated by the application from your factor scores.
 {
  "property": {"address": "", "neighborhood": "", "city": "", "county": "", "zip": "", "census_tract": "", "boundaries": "", "evaluation_date": ""},
  "factors": [ exactly 10 objects in this order: crime, income, schools, maintenance, owner occupancy, appreciation, rental demand, amenities, employment, resale liquidity:
-   {"id": 1, "score": 1-5 integer, "evidence": "evidence-based explanation with statistics, comparisons, data year and which geography level each statistic is for, and any unavailable data", "sources": ["https://..."]} ],
+   {"id": 1, "score": 1-5 integer, "evidence": "evidence-based explanation with statistics, comparisons, data year and which geography level each statistic is for, and any unavailable data"} ],
  "confidence": "High" | "Medium" | "Low",
  "confidence_note": "how missing or older data affects confidence",
  "strengths": [exactly 5 short strings],
@@ -142,35 +142,30 @@ const NRS_FORMAT = `Do your live research with the web search tool. Then reply w
 }
 Keep each evidence text under 900 characters. Never fabricate data.`;
 
-async function askClaude(env, address, type) {
-  const messages = [{ role: "user", content: "Property Address: " + address + "\nProperty Type: " + type + "\nEvaluation Date: " + new Date().toISOString().slice(0, 10) + "\n\n" + NRS_FORMAT }];
-  for (let i = 0; i < 4; i++) {
-    let res;
-    try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({
-          model: env.NRS_MODEL || "claude-sonnet-5-5",
-          max_tokens: 12000,
-          system: NRS_PROMPT,
-          tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 12 }],
-          messages,
-        }),
-      });
-    } catch (e) { return { error: { status: 502, msg: "The rating service is unreachable." } }; }
-    if (res.status === 401 || res.status === 403) return { error: { status: 502, msg: "Anthropic rejected the API key (code " + res.status + ")." } };
-    if (res.status === 402 || res.status === 429 || res.status === 529) return { error: { status: 503, msg: "The rating service is busy or out of credit (code " + res.status + "). Try again later." } };
-    if (!res.ok) {
-      let detail = "";
-      try { detail = (await res.text()).replace(/sk-[A-Za-z0-9_-]+/g, "").slice(0, 220); } catch (e) {}
-      return { error: { status: 502, msg: "The rating service returned code " + res.status + ". " + detail } };
-    }
-    const j = await res.json();
-    if (j.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: j.content }); continue; }
-    return { data: j };
+async function askGemini(env, address, type) {
+  const prompt = "Property Address: " + address + "\nProperty Type: " + type + "\nEvaluation Date: " + new Date().toISOString().slice(0, 10) + "\n\n" + NRS_FORMAT;
+  let res;
+  try {
+    res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + (env.NRS_MODEL || "gemini-2.5-flash-lite") + ":generateContent", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: NRS_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+      }),
+    });
+  } catch (e) { return { error: { status: 502, msg: "The rating service is unreachable." } }; }
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.text()).replace(/AIza[A-Za-z0-9_-]+/g, "").slice(0, 220); } catch (e) {}
+    if (res.status === 400 && /API key/i.test(detail)) return { error: { status: 502, msg: "Google rejected the Gemini API key. Check it in the Worker settings." } };
+    if (res.status === 401 || res.status === 403) return { error: { status: 502, msg: "Google rejected the Gemini API key (code " + res.status + ")." } };
+    if (res.status === 429 || res.status === 503) return { error: { status: 503, msg: "The rating service is busy or its free quota is used up (code " + res.status + "). Try again later." } };
+    return { error: { status: 502, msg: "The rating service returned code " + res.status + ". " + detail } };
   }
-  return { error: { status: 504, msg: "The research took too long. Please try again." } };
+  return { data: await res.json() };
 }
 
 const cleanStr = (v, n) => String(v === undefined || v === null ? "" : v).slice(0, n || 400);
@@ -181,7 +176,7 @@ async function neighborhood(url, env, ip) {
   let type = (url.searchParams.get("type") || "Single Family").trim();
   if (!validAddress(address)) return { status: 400, body: { error: "Please enter a valid US street address." } };
   if (!["Single Family", "Townhouse", "Condo", "Multi-family", "Other"].includes(type)) type = "Single Family";
-  if (!env.ANTHROPIC_API_KEY) return { status: 500, body: { error: "Setup problem: the Anthropic key is not saved in the Worker." } };
+  if (!env.GEMINI_API_KEY) return { status: 500, body: { error: "Setup problem: the Gemini key is not saved in the Worker." } };
 
   const key = "nrs?address=" + encodeURIComponent(address.toLowerCase()) + "&type=" + encodeURIComponent(type.toLowerCase());
   const cache = caches.default;
@@ -196,10 +191,14 @@ async function neighborhood(url, env, ip) {
   recent.push(now); nrsHits.set(ip, recent);
   if (nrsHits.size > 2000) nrsHits.clear();
 
-  const got = await askClaude(env, address, type);
+  const got = await askGemini(env, address, type);
   if (got.error) return { status: got.error.status, body: { error: got.error.msg } };
 
-  const text = (got.data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  const cand = (got.data.candidates || [])[0] || {};
+  const text = ((cand.content && cand.content.parts) || []).map((p) => p.text || "").join("");
+  const gm = cand.groundingMetadata || {};
+  const consulted = (gm.groundingChunks || []).map((c) => c.web || {}).filter((x) => typeof x.uri === "string" && /^https:\/\//i.test(x.uri)).slice(0, 12).map((x) => ({ title: cleanStr(x.title || x.uri, 120), uri: x.uri }));
+  const searchHtml = gm.searchEntryPoint && typeof gm.searchEntryPoint.renderedContent === "string" ? gm.searchEntryPoint.renderedContent.slice(0, 20000) : "";
   let r;
   try { r = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch (e) { r = null; }
   if (!r || !Array.isArray(r.factors) || r.factors.length < 10) return { status: 502, body: { error: "The rating came back incomplete. Please try again." } };
@@ -211,7 +210,7 @@ async function neighborhood(url, env, ip) {
     const score = Math.min(5, Math.max(1, Math.round(Number(f.score) || 3)));
     const points = Math.round((score / 5) * w * 100) / 100;
     total += points;
-    const sources = (Array.isArray(f.sources) ? f.sources : []).filter((s) => typeof s === "string" && /^https:\/\//i.test(s)).slice(0, 5);
+    const sources = [];
     return { id: i + 1, name: NRS_NAMES[i], weight: w, score, points, evidence: cleanStr(f.evidence, 1200), sources };
   });
   total = Math.round(total * 100) / 100;
@@ -221,6 +220,7 @@ async function neighborhood(url, env, ip) {
   const body = {
     property: { address: cleanStr(p.address || address), neighborhood: cleanStr(p.neighborhood), city: cleanStr(p.city), county: cleanStr(p.county), zip: cleanStr(p.zip, 20), census_tract: cleanStr(p.census_tract, 60), boundaries: cleanStr(p.boundaries, 500), evaluation_date: cleanStr(p.evaluation_date || new Date().toISOString().slice(0, 10), 40) },
     total, grade: g[1], classification: g[2], confidence: conf, confidence_note: cleanStr(r.confidence_note, 600),
+    sources_consulted: consulted, search_html: searchHtml, model: env.NRS_MODEL || "gemini-2.5-flash-lite",
     factors, strengths: cleanList(r.strengths, 5), weaknesses: cleanList(r.weaknesses, 5),
     outlook: { homeownership: cleanStr(o.homeownership, 600), appreciation: cleanStr(o.appreciation, 600), rental_investment: cleanStr(o.rental_investment, 600), tenant_demand: cleanStr(o.tenant_demand, 600), resale_liquidity: cleanStr(o.resale_liquidity, 600), economic_resilience: cleanStr(o.economic_resilience, 600) },
     verdict: { long_term_ownership: cleanStr(v.long_term_ownership, 500), rental_investment: cleanStr(v.rental_investment, 500), appreciation: cleanStr(v.appreciation, 500), biggest_risks: cleanList(v.biggest_risks, 3), recommendation: cleanStr(v.recommendation, 900) },
