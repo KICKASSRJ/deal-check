@@ -245,3 +245,7 @@ body:not(.home) .bar { padding-left: 28px; padding-right: 28px; }
 @media (min-width: 1100px) {
   #pRent .grid2 { grid-template-columns: repeat(3, 1fr); }
 }
+
+.wgrid { display: grid; grid-template-columns: 1fr 84px; gap: 8px 14px; align-items: center; margin: 10px 0 8px; }
+.wgrid label { margin: 0; font-weight: 400; font-size: 14px; }
+.wgrid input { padding: 7px 10px; text-align: right; }

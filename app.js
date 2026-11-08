@@ -224,17 +224,26 @@
 
   function renderNrs(d) {
     var pr = d.property || {}, h = "";
-    lastGrade = String(d.grade || ""); histUpdate({ grade: d.grade, score: d.total });
+    lastNrs = d;
+    // Points, total and grade use the visitor's own weights (scores per factor come from the research and do not change)
+    var W = loadWeights(), custom = !isDefault(W), pts = 0;
+    var fac = (d.factors || []).map(function (f, i) {
+      var p = Math.round((Number(f.score) / 5) * W[i] * 100) / 100; pts += p;
+      return { name: f.name, weight: W[i], score: f.score, points: p };
+    });
+    var total = Math.round(pts * 100) / 100, gr = gradeFor(total);
+    lastGrade = gr[1]; histUpdate({ grade: gr[1], score: total });
     updateKpis();
-    h += '<div class="score"><b>' + esc(d.grade) + '</b><span>' + esc(d.total) + " / 100 · " + esc(d.classification) + " · Data confidence: " + esc(d.confidence) + "</span></div>";
+    h += '<div class="score"><b>' + esc(gr[1]) + '</b><span>' + esc(total) + " / 100 · " + esc(gr[2]) + " · Data confidence: " + esc(d.confidence) + "</span></div>";
     h += "<table><tr><th>Criterion</th><th>Wt</th><th>Score</th><th>Pts</th></tr>";
     var calc = [];
-    (d.factors || []).forEach(function (f) {
+    fac.forEach(function (f) {
       h += "<tr><td>" + esc(f.name) + "</td><td>" + esc(f.weight) + "%</td><td>" + esc(f.score) + "/5</td><td>" + esc(f.points) + "</td></tr>";
       calc.push(f.points);
     });
-    h += "<tr><td><b>Total</b></td><td>100%</td><td></td><td><b>" + esc(d.total) + "</b></td></tr></table>";
-    h += '<div class="note">Calculation: ' + esc(calc.join(" + ")) + " = " + esc(d.total) + ". Each factor: (score ÷ 5) × weight.</div>";
+    h += "<tr><td><b>Total</b></td><td>100%</td><td></td><td><b>" + esc(total) + "</b></td></tr></table>";
+    h += '<div class="note">Calculation: ' + esc(calc.join(" + ")) + " = " + esc(total) + ". Each factor: (score ÷ 5) × weight." +
+      (custom ? " Your own weights are applied. With the standard weights this address scores " + esc(d.total) + " (" + esc(d.grade) + ")." : "") + "</div>";
     h += "<details><summary>Property and area</summary>" + pe("Address", pr.address) + pe("Neighborhood", pr.neighborhood) + pe("City / county", [pr.city, pr.county].filter(Boolean).join(" / ")) +
       pe("ZIP", pr.zip) + pe("Census tract", pr.census_tract) + pe("Boundaries used", pr.boundaries) + pe("Evaluation date", pr.evaluation_date) + pe("Confidence note", d.confidence_note) + "</details>";
     h += "<details><summary>Detailed analysis (10 factors)</summary>";
@@ -679,7 +688,7 @@
   // ===========================================================================
   // Privacy controls
   // ===========================================================================
-  var STORE_KEYS = ["dcFields", "dcRentFields", "dcRecent", "dcGeo", "dcHistory", "dcSave", "dcNotice", "dcHistMig"];
+  var STORE_KEYS = ["dcWeights", "dcFields", "dcRentFields", "dcRecent", "dcGeo", "dcHistory", "dcSave", "dcNotice", "dcHistMig"];
   $("saveHist").checked = saveOn();
   $("saveHist").addEventListener("change", function () {
     try { localStorage.setItem("dcSave", $("saveHist").checked ? "1" : "0"); } catch (e) {}
@@ -707,6 +716,55 @@
     $("noticeOk").addEventListener("click", dismiss);
     $("noticePriv").addEventListener("click", function () { dismiss(); $("saveHist").checked = saveOn(); openDlg($("privDlg")); });
   })();
+
+  // ===========================================================================
+  // Neighbourhood factor weights (kept in this browser until the visitor changes them).
+  // When memberships arrive, swap loadWeights/saveWeights for calls to the account API.
+  // ===========================================================================
+  var lastNrs = null;
+  var NRS_DEF = [["Crime & Safety", 20], ["Household Income", 15], ["Schools", 10], ["Property Maintenance", 10], ["Owner Occupancy", 10],
+    ["Appreciation Potential", 10], ["Rental Demand", 10], ["Amenities & Connectivity", 5], ["Employment Stability", 5], ["Resale Liquidity", 5]];
+  var NRS_SCALE = [[95, "A+", "Exceptional"], [90, "A", "Excellent"], [85, "A-", "Very Good"], [80, "B+", "Above Average"], [75, "B", "Good"], [70, "B-", "Fairly Good"],
+    [65, "C+", "Moderate"], [60, "C", "Average"], [55, "C-", "Below Average"], [40, "D", "Weak"], [0, "F", "Poor"]];
+  function defaultWeights() { return NRS_DEF.map(function (x) { return x[1]; }); }
+  function isDefault(w) { return w.every(function (v, i) { return v === NRS_DEF[i][1]; }); }
+  function gradeFor(total) { return NRS_SCALE.filter(function (g) { return total >= g[0]; })[0] || NRS_SCALE[NRS_SCALE.length - 1]; }
+  function loadWeights() {
+    try {
+      var w = JSON.parse(localStorage.getItem("dcWeights") || "null");
+      if (Array.isArray(w) && w.length === 10 && w.every(function (v) { return Number.isInteger(v) && v >= 0 && v <= 100; }) && w.reduce(function (a, b) { return a + b; }, 0) === 100) return w;
+    } catch (e) {}
+    return defaultWeights();
+  }
+  function saveWeights(w) {
+    try { if (isDefault(w)) localStorage.removeItem("dcWeights"); else localStorage.setItem("dcWeights", JSON.stringify(w)); } catch (e) {}
+  }
+
+  function buildWeights() {
+    var W = loadWeights(), box = $("wList"); box.innerHTML = "";
+    NRS_DEF.forEach(function (x, i) {
+      var l = document.createElement("label"); l.setAttribute("for", "w" + i); l.textContent = x[0];
+      var inp = document.createElement("input"); inp.type = "number"; inp.id = "w" + i; inp.min = "0"; inp.max = "100"; inp.step = "1"; inp.inputMode = "numeric"; inp.value = String(W[i]);
+      inp.addEventListener("input", onWeightInput);
+      box.appendChild(l); box.appendChild(inp);
+    });
+    showWeightState(W, true);
+  }
+  function readWeights() { return NRS_DEF.map(function (x, i) { var v = Number($("w" + i).value); return Number.isInteger(v) && v >= 0 && v <= 100 ? v : NaN; }); }
+  function showWeightState(w, ok) {
+    var sum = w.reduce(function (a, b) { return a + b; }, 0);
+    var good = ok && sum === 100;
+    $("wSum").textContent = good ? "Total 100%" + (isDefault(w) ? " (standard weights)" : " (your weights)") : "Total " + (isNaN(sum) ? "?" : sum) + "%. Make the weights add up to 100.";
+    $("wSum").className = good ? "note" : "err";
+    $("wSummary").textContent = "Factor weights" + (good && !isDefault(w) ? " (custom)" : "");
+  }
+  function onWeightInput() {
+    var w = readWeights(), sum = w.reduce(function (a, b) { return a + b; }, 0);
+    showWeightState(w, true);
+    if (sum === 100) { saveWeights(w); if (lastNrs) renderNrs(lastNrs); }
+  }
+  $("wReset").addEventListener("click", function () { saveWeights(defaultWeights()); buildWeights(); if (lastNrs) renderNrs(lastNrs); });
+  buildWeights();
 
   refreshHistUi();
 })();
