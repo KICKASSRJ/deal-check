@@ -46,6 +46,7 @@
   #picker { font-size: 14px; }
   #picker summary { cursor: pointer; color: var(--accent); font-weight: 500; }
   #pickList { margin-top: 8px; display: grid; gap: 6px; }
+  #rPick { font-size: 13px; } #rPick summary { cursor: pointer; color: var(--accent); font-weight: 500; } #rPickList { margin-top: 8px; display: grid; gap: 6px; }
   label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
   #rent { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
   #rent h2 { font-size: 15px; margin: 0; font-weight: 600; }
@@ -100,7 +101,12 @@
         <select id="rBaths"><option value="">Any</option><option value="1">1</option><option value="1.5+" selected>1.5 or more</option></select></div>
       <div class="f"><label for="rType">Type</label>
         <select id="rType"><option value="any">Any</option><option value="house">House</option><option value="apartment">Apartment</option></select></div>
+      <div class="f"><label for="rBack">Look back</label>
+        <select id="rBack"><option value="30">1 month</option><option value="90" selected>3 months</option><option value="180">6 months</option><option value="365">12 months</option></select></div>
+      <div class="f"><label for="rRadius">Radius</label>
+        <select id="rRadius"><option value="0.5">0.5 mile</option><option value="1" selected>1 mile</option><option value="2">2 miles</option><option value="3">3 miles</option><option value="5">5 miles</option></select></div>
     </div>
+    <details id="rPick"><summary>Choose results to show</summary><div id="rPickList"></div></details>
     <button id="rentGo">Check rents</button>
     <div id="rentOut"></div>
   </div>
@@ -271,14 +277,52 @@
     return n ? (n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2) : null;
   }
 
+  // Which result rows to show (saved in this browser)
+  var RENT_FIELDS = [
+    { id: "mean",   label: "Average",                      on: true,  html: function (d) { return row("Average", money0(d.mean)); } },
+    { id: "range",  label: "Typical range (25th–75th)",    on: false, html: function (d) { return row("Typical range (25th–75th)", money0(d.percentile_25) + " – " + money0(d.percentile_75)); } },
+    { id: "minmax", label: "Lowest – highest",             on: true,  html: function (d) { return row("Lowest – highest", money0(d.min) + " – " + money0(d.max)); } },
+    { id: "count",  label: "Listings used",                on: true,  html: function (d) { return row("Listings used", d.samples === undefined ? "—" : d.samples); } },
+    { id: "radius", label: "Search radius used",           on: true,  html: function (d) { return d.radius_miles === undefined ? "" : row("Search radius used", d.radius_miles + " mi"); } },
+    { id: "back",   label: "Look-back used",               on: false, html: function (d) { return d.look_back_days === undefined ? "" : row("Look-back used", d.look_back_days + " days"); } }
+  ];
+  var rentOn = {};
+  RENT_FIELDS.forEach(function (f) { rentOn[f.id] = f.on; });
+  try { var sv = JSON.parse(localStorage.getItem("dcRentFields") || "null"); if (sv) RENT_FIELDS.forEach(function (f) { if (typeof sv[f.id] === "boolean") rentOn[f.id] = sv[f.id]; }); } catch (e) {}
+  var lastRent = null;
+
+  function row(label, value) { return "<dt>" + esc(label) + "</dt><dd>" + esc(value) + "</dd>"; }
+
+  function renderRentPicker() {
+    var box = $("rPickList");
+    box.innerHTML = "";
+    RENT_FIELDS.forEach(function (f) {
+      var l = document.createElement("label"); l.className = "pick";
+      var c = document.createElement("input"); c.type = "checkbox"; c.checked = !!rentOn[f.id];
+      c.addEventListener("change", function () {
+        rentOn[f.id] = c.checked;
+        try { localStorage.setItem("dcRentFields", JSON.stringify(rentOn)); } catch (e) {}
+        if (lastRent) renderRent(lastRent);
+      });
+      l.appendChild(c); l.appendChild(document.createTextNode(f.label)); box.appendChild(l);
+    });
+  }
+
   function renderRent(d) {
+    lastRent = d;
+    var askedR = Number($("rRadius").value), askedB = Number($("rBack").value);
     var html = '<div class="big">' + esc(money0(d.median)) + ' <span style="font-size:13px;font-weight:400;color:var(--muted)">median rent / month</span></div><dl>';
-    html += "<dt>Average</dt><dd>" + esc(money0(d.mean)) + "</dd>";
-    html += "<dt>Typical range (25th–75th)</dt><dd>" + esc(money0(d.percentile_25)) + " – " + esc(money0(d.percentile_75)) + "</dd>";
-    html += "<dt>Lowest – highest</dt><dd>" + esc(money0(d.min)) + " – " + esc(money0(d.max)) + "</dd>";
-    html += "<dt>Listings used</dt><dd>" + esc(d.samples === undefined ? "—" : d.samples) + "</dd>";
-    if (d.radius_miles !== undefined) html += "<dt>Search radius</dt><dd>" + esc(d.radius_miles) + " mi</dd>";
+    RENT_FIELDS.forEach(function (f) { if (rentOn[f.id]) html += f.html(d); });
     html += "</dl>";
+    // Say so when Rentometer used a different radius or look-back than requested
+    if (d.filters_ignored) {
+      html += '<div class="note">Rentometer did not accept the radius and look-back settings for this search, so it used its own automatic values.</div>';
+    } else {
+      if (d.radius_miles !== undefined && Number(d.radius_miles) > askedR + 0.001)
+        html += '<div class="note">Not enough data within ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', so Rentometer widened the search to ' + esc(d.radius_miles) + ' miles (smart radius).</div>';
+      if (d.look_back_days !== undefined && Number(d.look_back_days) > askedB)
+        html += '<div class="note">Not enough listings in the last ' + esc(askedB) + ' days, so Rentometer looked back ' + esc(d.look_back_days) + ' days.</div>';
+    }
     if (d.quickview_url) html += '<div class="note"><a href="' + esc(d.quickview_url) + '" target="_blank" rel="noopener">Open full Rentometer report</a></div>';
     html += '<div class="note">Source: Rentometer. Based on nearby listings with the bedrooms, bathrooms and type chosen above (it cannot filter by square footage). Not a guarantee of achievable rent.</div>';
     $("rentOut").innerHTML = html;
@@ -293,7 +337,8 @@
     out.innerHTML = '<div class="note">Checking rents…</div>';
     try {
       var url = WORKER_URL + "/rent?address=" + encodeURIComponent(addr) + "&bedrooms=" + encodeURIComponent($("rBeds").value) +
-        "&baths=" + encodeURIComponent(bathParam) + "&building_type=" + encodeURIComponent($("rType").value);
+        "&baths=" + encodeURIComponent(bathParam) + "&building_type=" + encodeURIComponent($("rType").value) +
+        "&look_back_days=" + encodeURIComponent($("rBack").value) + "&radius=" + encodeURIComponent($("rRadius").value);
       var res = await fetch(url);
       var d = await res.json();
       if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Rent data is unavailable right now.") + "</div>"; return; }
@@ -393,6 +438,7 @@
   }
 
   renderPicker();
+  renderRentPicker();
   $("rentGo").addEventListener("click", checkRent);
   $("go").addEventListener("click", show);
   $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
