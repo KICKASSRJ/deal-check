@@ -253,6 +253,7 @@
       lastRecord = data;
       renderDetails();
       prefillRent();
+      checkRent();   // run the rent check automatically for the found property
     } catch (e) {
       box.innerHTML = '<div class="note">Could not load property details.</div>';
     }
@@ -319,7 +320,7 @@
       html += '<div class="note">Rentometer did not accept the radius and look-back settings for this search, so it used its own automatic values.</div>';
     } else {
       if (d.radius_miles !== undefined && Number(d.radius_miles) > askedR + 0.001)
-        html += '<div class="note">Not enough data within ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', so Rentometer widened the search to ' + esc(d.radius_miles) + ' miles (smart radius).</div>';
+        html += '<div class="note">You chose ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', but Rentometer searched ' + esc(d.radius_miles) + ' miles. It widens the radius automatically (smart radius) when there are too few nearby listings, and it may not apply a custom radius.</div>';
       if (d.look_back_days !== undefined && Number(d.look_back_days) > askedB)
         html += '<div class="note">Not enough listings in the last ' + esc(askedB) + ' days, so Rentometer looked back ' + esc(d.look_back_days) + ' days.</div>';
     }
