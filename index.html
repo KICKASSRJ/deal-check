@@ -95,14 +95,12 @@
     <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
     <div class="grid2">
       <div class="f"><label for="rBeds">Bedrooms</label>
-        <select id="rBeds"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
+        <select id="rBeds"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></div>
       <div class="f"><label for="rBaths">Bathrooms</label>
-        <select id="rBaths"><option>Any</option><option>1</option><option>1.5</option><option selected>2</option><option>2.5</option><option>3</option><option>3.5</option><option>4</option></select></div>
-      <div class="f"><label for="rSqft">Square feet</label><input id="rSqft" type="text" inputmode="numeric" placeholder="e.g. 1800"></div>
+        <select id="rBaths"><option value="">Any</option><option value="1">1</option><option value="1.5+" selected>1.5 or more</option></select></div>
       <div class="f"><label for="rType">Type</label>
         <select id="rType"><option value="any">Any</option><option value="house">House</option><option value="apartment">Apartment</option></select></div>
     </div>
-    <label class="pick"><input type="checkbox" id="rPlus" checked> This many bathrooms or more</label>
     <button id="rentGo">Check rents</button>
     <div id="rentOut"></div>
   </div>
@@ -261,9 +259,9 @@
     $("rAddr").value = lastAddress;
     var r = lastRecord;
     if (!r) return;
-    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(0, Math.min(6, Math.round(r.bedrooms))));
-    if (typeof r.bathrooms === "number") $("rBaths").value = String(Math.max(1, Math.min(4, Math.round(r.bathrooms * 2) / 2)));
-    if (r.squareFootage) $("rSqft").value = String(r.squareFootage);
+    // Rentometer accepts 1 to 4 bedrooms, and baths of 1 or 1.5+ only
+    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(1, Math.min(4, Math.round(r.bedrooms))));
+    if (typeof r.bathrooms === "number") $("rBaths").value = r.bathrooms >= 1.5 ? "1.5+" : "1";
   }
 
   function money0(v) { return (v === undefined || v === null || isNaN(v)) ? "—" : "$" + Math.round(Number(v)).toLocaleString(); }
@@ -274,34 +272,15 @@
   }
 
   function renderRent(d) {
-    var sq = Number(String($("rSqft").value).replace(/[^0-9.]/g, "")) || 0;
-    var list = Array.isArray(d.property_listings) ? d.property_listings : [];
     var html = '<div class="big">' + esc(money0(d.median)) + ' <span style="font-size:13px;font-weight:400;color:var(--muted)">median rent / month</span></div><dl>';
     html += "<dt>Average</dt><dd>" + esc(money0(d.mean)) + "</dd>";
     html += "<dt>Typical range (25th–75th)</dt><dd>" + esc(money0(d.percentile_25)) + " – " + esc(money0(d.percentile_75)) + "</dd>";
     html += "<dt>Lowest – highest</dt><dd>" + esc(money0(d.min)) + " – " + esc(money0(d.max)) + "</dd>";
-    html += "<dt>Listings used</dt><dd>" + esc(d.count === undefined ? "—" : d.count) + "</dd>";
-    if (d.average_update_days !== undefined) html += "<dt>Average listing age</dt><dd>" + esc(d.average_update_days) + " days</dd>";
-
-    // Estimate from your square footage, using the price per sq ft of the comparable listings
-    var ppsf = list.filter(function (l) { return l.price > 0 && l.sqft > 0; }).map(function (l) { return l.price / l.sqft; });
-    if (sq && ppsf.length >= 3) {
-      html += "<dt>Estimate for " + esc(sq.toLocaleString()) + " sq ft</dt><dd>" + esc(money0(median(ppsf) * sq)) + "</dd>";
-    }
+    html += "<dt>Listings used</dt><dd>" + esc(d.samples === undefined ? "—" : d.samples) + "</dd>";
+    if (d.radius_miles !== undefined) html += "<dt>Search radius</dt><dd>" + esc(d.radius_miles) + " mi</dd>";
     html += "</dl>";
-    if (sq && ppsf.length >= 3) html += '<div class="note">The square-foot estimate uses the median price per sq ft (' + esc("$" + median(ppsf).toFixed(2)) + ") of " + ppsf.length + " nearby listings that report size.</div>";
-    else if (sq) html += '<div class="note">Too few nearby listings report square footage to estimate by size.</div>';
-
-    if (list.length) {
-      html += "<table><tr><th>Bd/Ba</th><th>Sq ft</th><th>Rent</th><th>$/sq ft</th><th>Seen</th></tr>";
-      list.slice(0, 10).forEach(function (l) {
-        html += "<tr><td>" + esc((l.bedrooms === undefined ? "—" : l.bedrooms) + "/" + (l.baths === undefined ? "—" : l.baths)) + "</td><td>" +
-          esc(l.sqft ? Number(l.sqft).toLocaleString() : "—") + "</td><td>" + esc(money0(l.price)) + "</td><td>" +
-          esc(l.price && l.sqft ? (l.price / l.sqft).toFixed(2) : "—") + "</td><td>" + esc(l.last_seen ? String(l.last_seen).slice(5) : "—") + "</td></tr>";
-      });
-      html += "</table>";
-    }
-    html += '<div class="note">Source: Rentometer. Estimates are based on nearby listings and are not a guarantee of achievable rent.</div>';
+    if (d.quickview_url) html += '<div class="note"><a href="' + esc(d.quickview_url) + '" target="_blank" rel="noopener">Open full Rentometer report</a></div>';
+    html += '<div class="note">Source: Rentometer. Based on nearby listings with the bedrooms, bathrooms and type chosen above (it cannot filter by square footage). Not a guarantee of achievable rent.</div>';
     $("rentOut").innerHTML = html;
   }
 
@@ -310,8 +289,7 @@
     var addr = $("rAddr").value.trim().replace(/,\s*USA$/i, "");
     if (!addr) { out.innerHTML = '<div class="note">Search a property first, or type an address above.</div>'; return; }
     if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
-    var baths = $("rBaths").value;
-    var bathParam = baths === "Any" ? "Any" : baths + ($("rPlus").checked ? "+" : "");
+    var bathParam = $("rBaths").value;   // "", "1" or "1.5+"
     out.innerHTML = '<div class="note">Checking rents…</div>';
     try {
       var url = WORKER_URL + "/rent?address=" + encodeURIComponent(addr) + "&bedrooms=" + encodeURIComponent($("rBeds").value) +

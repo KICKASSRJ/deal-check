@@ -74,16 +74,16 @@ async function property(url, env) {
 async function rent(url, env) {
   const address = (url.searchParams.get("address") || "").trim();
   const beds = url.searchParams.get("bedrooms") || "";
-  const baths = url.searchParams.get("baths") || "Any";
+  const baths = url.searchParams.get("baths") || "";
   const type = (url.searchParams.get("building_type") || "any").toLowerCase();
 
   if (!validAddress(address)) return { status: 400, body: { error: "Please enter a valid US street address." } };
-  if (!/^[0-6]$/.test(beds)) return { status: 400, body: { error: "Bedrooms must be 0 to 6." } };
-  if (!(baths === "Any" || /^[1-6](\.5)?\+?$/.test(baths))) return { status: 400, body: { error: "Bathrooms value is not valid." } };
+  if (!/^[1-4]$/.test(beds)) return { status: 400, body: { error: "Bedrooms must be 1 to 4." } };
+  if (!["", "1", "1.5+"].includes(baths)) return { status: 400, body: { error: "Bathrooms must be blank, 1 or 1.5+." } };
   if (!["any", "house", "apartment"].includes(type)) return { status: 400, body: { error: "Building type is not valid." } };
   if (!env.RENTOMETER_API_KEY) return { status: 500, body: { error: "Setup problem: the Rentometer key is not saved in the Worker." } };
 
-  const q = "address=" + encodeURIComponent(address) + "&bedrooms=" + beds + "&baths=" + encodeURIComponent(baths) + (type !== "any" ? "&building_type=" + type : "");
+  const q = "address=" + encodeURIComponent(address) + "&bedrooms=" + beds + (baths ? "&baths=" + encodeURIComponent(baths) : "") + (type !== "any" ? "&building_type=" + type : "");
   const out = await cached("rent?" + q.toLowerCase(), async () => {
     let up;
     try {
@@ -93,7 +93,11 @@ async function rent(url, env) {
     } catch (e) { return { error: { status: 502, msg: "Rent data service is unreachable." } }; }
     if (up.status === 401 || up.status === 403) return { error: { status: 502, msg: "Rentometer rejected the key (code " + up.status + "). Check the key and that API access is active." } };
     if (up.status === 402 || up.status === 429) return { error: { status: 503, msg: "Rentometer credits or rate limit reached (code " + up.status + ")." } };
-    if (!up.ok) return { error: { status: 502, msg: "Rent data is unavailable right now (code " + up.status + ")." } };
+    if (!up.ok) {
+      let detail = "";
+      try { detail = (await up.text()).replace(/api_key=[^&\s"]+/g, "").slice(0, 200); } catch (e) {}
+      return { error: { status: 502, msg: "Rent data is unavailable right now (code " + up.status + "). " + detail } };
+    }
     const data = await up.json();
     if (data && data.error) return { error: { status: 404, msg: String(data.error).slice(0, 160) } };
     return { data, error: null };
