@@ -47,6 +47,16 @@
   #picker summary { cursor: pointer; color: var(--accent); font-weight: 500; }
   #pickList { margin-top: 8px; display: grid; gap: 6px; }
   #rPick { font-size: 13px; } #rPick summary { cursor: pointer; color: var(--accent); font-weight: 500; } #rPickList { margin-top: 8px; display: grid; gap: 6px; }
+  #nrs { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #nrs h2 { font-size: 15px; margin: 0; font-weight: 600; }
+  #nrsOut .score { display: flex; align-items: baseline; gap: 10px; margin: 4px 0; }
+  #nrsOut .score b { font-size: 34px; line-height: 1; color: var(--accent); } #nrsOut .score span { color: var(--muted); font-size: 13px; }
+  #nrsOut table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  #nrsOut th, #nrsOut td { text-align: right; padding: 4px 3px; border-bottom: 1px solid var(--line); }
+  #nrsOut th:first-child, #nrsOut td:first-child { text-align: left; } #nrsOut th { color: var(--muted); font-weight: 500; }
+  #nrsOut details { margin-top: 8px; } #nrsOut summary { cursor: pointer; color: var(--accent); font-weight: 500; }
+  #nrsOut p, #nrsOut li { margin: 6px 0; font-size: 13px; line-height: 1.45; } #nrsOut ul { padding-left: 18px; margin: 4px 0; }
+  #nrsOut .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.4; } #nrsOut .err { color: var(--err); font-size: 13px; }
   label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
   #rent { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
   #rent h2 { font-size: 15px; margin: 0; font-weight: 600; }
@@ -110,6 +120,13 @@
     <details id="rPick"><summary>Choose results to show</summary><div id="rPickList"></div></details>
     <button id="rentGo">Check rents</button>
     <div id="rentOut"></div>
+  </div>
+
+  <div id="nrs">
+    <h2>Neighborhood rating (US-NRS)</h2>
+    <div class="note" style="color:var(--muted);font-size:12px">AI-researched score out of 100 for the neighborhood only, not the property as an investment. Takes about 1–2 minutes.</div>
+    <button id="nrsGo">Rate neighborhood</button>
+    <div id="nrsOut"></div>
   </div>
 
   <div>
@@ -351,6 +368,65 @@
     }
   }
 
+  // ---- Neighborhood rating (US-NRS) -------------------------------------------
+  function safeUrl(u) {
+    try { var x = new URL(u); return x.protocol === "https:" ? x.href.replace(/"/g, "%22") : ""; } catch (e) { return ""; }
+  }
+  function ul(a) { return a && a.length ? "<ul>" + a.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>—</p>"; }
+  function pe(label, text) { return text ? "<p><b>" + esc(label) + ":</b> " + esc(text) + "</p>" : ""; }
+
+  function renderNrs(d) {
+    var pr = d.property || {}, h = "";
+    h += '<div class="score"><b>' + esc(d.grade) + '</b><span>' + esc(d.total) + " / 100 · " + esc(d.classification) + " · Data confidence: " + esc(d.confidence) + "</span></div>";
+    h += "<table><tr><th>Criterion</th><th>Wt</th><th>Score</th><th>Pts</th></tr>";
+    var calc = [];
+    (d.factors || []).forEach(function (f) {
+      h += "<tr><td>" + esc(f.name) + "</td><td>" + esc(f.weight) + "%</td><td>" + esc(f.score) + "/5</td><td>" + esc(f.points) + "</td></tr>";
+      calc.push(f.points);
+    });
+    h += "<tr><td><b>Total</b></td><td>100%</td><td></td><td><b>" + esc(d.total) + "</b></td></tr></table>";
+    h += '<div class="note">Calculation: ' + esc(calc.join(" + ")) + " = " + esc(d.total) + ". Each factor: (score ÷ 5) × weight.</div>";
+    h += "<details><summary>Property and area</summary>" + pe("Address", pr.address) + pe("Neighborhood", pr.neighborhood) + pe("City / county", [pr.city, pr.county].filter(Boolean).join(" / ")) +
+      pe("ZIP", pr.zip) + pe("Census tract", pr.census_tract) + pe("Boundaries used", pr.boundaries) + pe("Evaluation date", pr.evaluation_date) + pe("Confidence note", d.confidence_note) + "</details>";
+    h += "<details><summary>Detailed analysis (10 factors)</summary>";
+    (d.factors || []).forEach(function (f) {
+      h += "<p><b>" + esc(f.name) + " — " + esc(f.score) + "/5</b><br>" + esc(f.evidence || "—");
+      (f.sources || []).forEach(function (u, i) { var s = safeUrl(u); if (s) h += ' <a href="' + s + '" target="_blank" rel="noopener noreferrer">[' + (i + 1) + "]</a>"; });
+      h += "</p>";
+    });
+    h += "</details>";
+    h += "<details><summary>Top 5 strengths</summary>" + ul(d.strengths) + "</details>";
+    h += "<details><summary>Top 5 weaknesses and risks</summary>" + ul(d.weaknesses) + "</details>";
+    var o = d.outlook || {};
+    h += "<details><summary>Investment outlook</summary>" + pe("Long-term homeownership", o.homeownership) + pe("Appreciation", o.appreciation) + pe("Rental investment", o.rental_investment) +
+      pe("Tenant demand", o.tenant_demand) + pe("Resale liquidity", o.resale_liquidity) + pe("Economic resilience", o.economic_resilience) + "</details>";
+    var v = d.verdict || {};
+    h += "<details open><summary>Final verdict</summary>" + pe("Long-term ownership", v.long_term_ownership) + pe("Rental investment", v.rental_investment) + pe("Appreciation", v.appreciation) +
+      "<p><b>Three biggest risks:</b></p>" + ul(v.biggest_risks) + pe("Recommendation", v.recommendation) + "</details>";
+    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched from public web sources and may contain errors; check the cited sources before relying on it.</div>';
+    $("nrsOut").innerHTML = h;
+  }
+
+  async function checkNrs() {
+    var out = $("nrsOut"), btn = $("nrsGo");
+    var addr = (lastAddress || $("rAddr").value || "").trim().replace(/,\s*USA$/i, "");
+    if (!addr) { out.innerHTML = '<div class="note">Search a property first.</div>'; return; }
+    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
+    var t = lastRecord && lastRecord.propertyType;
+    var type = ["Single Family", "Townhouse", "Condo", "Multi-family"].indexOf(t) >= 0 ? t : "Single Family";
+    btn.disabled = true;
+    out.innerHTML = '<div class="note">Researching the neighborhood (crime, income, schools, market data…). This takes about 1–2 minutes. Please keep this page open.</div>';
+    try {
+      var res = await fetch(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
+      var d = await res.json();
+      if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Neighborhood rating is unavailable right now.") + "</div>"; }
+      else renderNrs(d);
+    } catch (e) {
+      out.innerHTML = '<div class="err">Could not load the neighborhood rating.</div>';
+    }
+    btn.disabled = false;
+  }
+
   var $ = function (id) { return document.getElementById(id); };
   var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
 
@@ -443,6 +519,7 @@
   renderPicker();
   renderRentPicker();
   $("rentGo").addEventListener("click", checkRent);
+  $("nrsGo").addEventListener("click", checkNrs);
   $("go").addEventListener("click", show);
   $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
   $("vRoad").addEventListener("click", function () { setView("roadmap"); });
