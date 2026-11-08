@@ -24,10 +24,19 @@ function cors(origin) {
   };
 }
 
+// Sent with every response: this API only returns JSON, so lock it down
+const SECURE = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+  "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+  "X-Frame-Options": "DENY",
+};
+
 function reply(body, status, origin) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...cors(origin) },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...SECURE, ...cors(origin) },
   });
 }
 
@@ -236,7 +245,7 @@ export default {
 
     // Only your website may call this Worker
     if (origin !== allowed) {
-      return new Response(JSON.stringify({ error: "Not allowed." }), { status: 403, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "Not allowed." }), { status: 403, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...SECURE } });
     }
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(allowed) });
     if (request.method !== "GET") return reply({ error: "Method not allowed." }, 405, allowed);

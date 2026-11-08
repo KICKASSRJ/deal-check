@@ -3,677 +3,205 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Deal Check</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com https://*.ggpht.com; connect-src 'self' https://deal-check-api.ranjjinisg.workers.dev https://*.googleapis.com https://*.google.com https://*.gstatic.com data: blob:; frame-src 'self' about: https://*.google.com; worker-src blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="description" content="Deal Check: property facts, market rent and a neighbourhood score for any US address.">
+<title>Deal Check: underwrite any US address</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #eef1f4; --panel: #ffffff; --ink: #1d2733; --muted: #5b6876;
-    --line: #d3d9e0; --accent: #0b6e6e; --accent-ink: #ffffff; --err: #b3261e;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #12171c; --panel: #1b222a; --ink: #e6ebf0; --muted: #9aa7b4;
-      --line: #2d3742; --accent: #4fb3b3; --accent-ink: #0c1a1a; --err: #f2988f;
-    }
-  }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body { font-family: "IBM Plex Sans", system-ui, sans-serif; background: var(--bg); color: var(--ink); display: flex; min-height: 100vh; }
-  aside { width: 340px; background: var(--panel); border-right: 1px solid var(--line); padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
-  h1 { font-size: 20px; margin: 0; font-weight: 600; }
-  p.sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
-  label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
-  input[type=text], input[type=password] { width: 100%; padding: 10px 12px; font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
-  input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button, .btn { font: inherit; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; text-align: center; display: inline-block; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-  .seg button { flex: 1; border: 0; border-radius: 0; background: var(--panel); }
-  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
-  .row { display: flex; gap: 8px; }
-  .row > * { flex: 1; }
-  #status { font-size: 13px; min-height: 18px; color: var(--muted); }
-  #status.err { color: var(--err); }
-  #found { font-size: 14px; line-height: 1.4; }
-  #acc { font-size: 13px; line-height: 1.4; color: var(--muted); }
-  #details { font-size: 14px; }
-  #details h2 { font-size: 15px; margin: 0 0 8px; font-weight: 600; }
-  #details dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
-  #details dt { color: var(--muted); }
-  #details dd { margin: 0; font-weight: 500; text-align: right; }
-  #details .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
-  #picker { font-size: 14px; }
-  #picker summary { cursor: pointer; color: var(--accent); font-weight: 500; }
-  #pickList { margin-top: 8px; display: grid; gap: 6px; }
-  #rPick { font-size: 13px; } #rPick summary { cursor: pointer; color: var(--accent); font-weight: 500; } #rPickList { margin-top: 8px; display: grid; gap: 6px; }
-  #nrs { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-  #nrs h2 { font-size: 15px; margin: 0; font-weight: 600; }
-  #nrsOut .score { display: flex; align-items: baseline; gap: 10px; margin: 4px 0; }
-  #nrsOut .score b { font-size: 34px; line-height: 1; color: var(--accent); } #nrsOut .score span { color: var(--muted); font-size: 13px; }
-  #nrsOut table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-  #nrsOut th, #nrsOut td { text-align: right; padding: 4px 3px; border-bottom: 1px solid var(--line); }
-  #nrsOut th:first-child, #nrsOut td:first-child { text-align: left; } #nrsOut th { color: var(--muted); font-weight: 500; }
-  #nrsOut details { margin-top: 8px; } #nrsOut summary { cursor: pointer; color: var(--accent); font-weight: 500; }
-  #nrsOut p, #nrsOut li { margin: 6px 0; font-size: 13px; line-height: 1.45; } #nrsOut ul { padding-left: 18px; margin: 4px 0; }
-  #nrsOut .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.4; } #nrsOut .err { color: var(--err); font-size: 13px; }
-  .acwrap { position: relative; }
-  #acList { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin-top: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; max-height: 300px; overflow-y: auto; box-shadow: 0 6px 18px rgba(0,0,0,.15); }
-  #acList .grp { font-size: 11px; color: var(--muted); padding: 8px 10px 2px; text-transform: uppercase; letter-spacing: .04em; }
-  #acList .opt { padding: 8px 10px; cursor: pointer; font-size: 14px; line-height: 1.3; }
-  #acList .opt small { display: block; color: var(--muted); font-size: 12px; }
-  #acList .opt[aria-selected=true], #acList .opt:hover { background: var(--bg); }
-  #acList .foot { padding: 6px 10px; border-top: 1px solid var(--line); }
-  .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
-  .linkbtn:disabled { color: var(--muted); cursor: default; }
-  label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
-  #rent { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-  #rent h2 { font-size: 15px; margin: 0; font-weight: 600; }
-  #rent .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  #rent .f label { font-size: 12px; color: var(--muted); }
-  #rent select, #rent input[type=text] { width: 100%; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
-  #rentOut dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; }
-  #rentOut dt { color: var(--muted); } #rentOut dd { margin: 0; font-weight: 500; text-align: right; }
-  #rentOut .big { font-size: 20px; font-weight: 600; margin: 4px 0 8px; }
-  #rentOut .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.4; }
-  #rentOut .err { color: var(--err); font-size: 13px; }
-  #rentOut table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-  #rentOut th, #rentOut td { text-align: right; padding: 4px 3px; border-bottom: 1px solid var(--line); }
-  #rentOut th:first-child, #rentOut td:first-child { text-align: left; }
-  #rentOut th { color: var(--muted); font-weight: 500; }
-  small { color: var(--muted); font-size: 12px; line-height: 1.45; }
-  main { flex: 1; position: relative; min-height: 100vh; }
-  #map { position: absolute; inset: 0; }
-  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 15px; padding: 24px; text-align: center; }
-  @media (max-width: 760px) {
-    body { flex-direction: column; }
-    aside { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
-    main { min-height: 70vh; }
-  }
-</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
-<body>
-<aside>
-  <div>
-    <h1>Deal Check</h1>
-    <p class="sub">Enter a US address to see the building outline, street labels and lot lines on Google Maps.</p>
-  </div>
+<body class="home">
 
-  <div>
-    <label for="addr">Property address</label>
-    <div class="acwrap">
-      <input id="addr" type="text" placeholder="e.g. 22617 SE 32nd St, Sammamish, WA" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="acList">
-      <div id="acList" role="listbox" aria-label="Address suggestions"></div>
+<header class="bar">
+  <a class="brand" href="./" aria-label="Deal Check home">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M4 9l12-5 12 5v14l-12 5-12-5z"/><path d="M16 4v24M4 9l12 5 12-5" opacity=".55"/><circle cx="16" cy="14" r="2.6" fill="currentColor" stroke="none"/></svg>
+    Deal Check
+  </a>
+  <nav aria-label="Main">
+    <button type="button" class="quiet" id="histBtn">History <span class="count" id="histCount">0</span></button>
+    <button type="button" class="quiet" id="privBtn">Privacy</button>
+  </nav>
+</header>
+
+<!-- ============ Home ============ -->
+<section id="hero">
+  <div class="hero-grid">
+    <div class="hero-copy">
+      <h1>Know the deal before you make the offer.</h1>
+      <p class="lede">Enter a US address. In about a minute you get the public record, what comparable homes rent for, and a graded score for the neighbourhood, next to the map.</p>
+      <div id="slotHome">
+        <div class="searchbox" id="searchbox">
+          <div class="field">
+            <div class="acwrap" style="flex:1">
+              <label for="addr" class="sr" style="position:absolute;left:-9999px">Property address</label>
+              <input id="addr" type="text" placeholder="Start typing a street address" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="acList">
+              <div id="acList" role="listbox" aria-label="Address suggestions"></div>
+            </div>
+            <button class="primary" id="go" type="button">Check this address</button>
+          </div>
+          <div class="aux">
+            <button type="button" id="geoBtn" class="linkbtn">Favour suggestions near me</button>
+          </div>
+          <div id="status" role="status"></div>
+        </div>
+      </div>
+      <div class="recents" id="recents" hidden></div>
     </div>
-    <button type="button" id="geoBtn" class="linkbtn" style="margin-top:6px">Use my location to improve suggestions</button>
-  </div>
-
-  <button class="primary" id="go">Show property</button>
-  <div id="status" role="status"></div>
-  <div id="found"></div>
-  <div id="acc"></div>
-  <div id="details"></div>
-  <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
-  <div id="rent">
-    <h2>Rent check (Rentometer)</h2>
-    <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
-    <div class="grid2">
-      <div class="f"><label for="rBeds">Bedrooms</label>
-        <select id="rBeds"><option value="0">Studio</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
-      <div class="f"><label for="rBaths">Bathrooms</label>
-        <select id="rBaths"><option value="">Any</option><option value="1">1</option><option value="1.5+" selected>1.5 or more</option></select></div>
-      <div class="f"><label for="rType">Type</label>
-        <select id="rType"><option value="any">Any</option><option value="house" selected>House</option><option value="apartment">Apartment</option></select></div>
-      <div class="f"><label for="rBack">Look back</label>
-        <select id="rBack"><option value="90" selected>3 months</option><option value="180">6 months</option><option value="365">12 months</option><option value="730">24 months</option></select></div>
-      <div class="f"><label for="rRadius">Radius</label>
-        <select id="rRadius"><option value="0.5">0.5 mile</option><option value="1" selected>1 mile</option><option value="2">2 miles</option><option value="3">3 miles</option><option value="5">5 miles</option></select></div>
-    </div>
-    <div class="f"><label for="rMaxSqft">Max square feet (living area)</label><input id="rMaxSqft" type="text" inputmode="numeric" placeholder="optional, e.g. 2500"></div>
-    <details id="rPick"><summary>Choose results to show</summary><div id="rPickList"></div></details>
-    <button id="rentGo">Check rents</button>
-    <div id="rentOut"></div>
-  </div>
-
-  <div id="nrs">
-    <h2>Neighbourhood rating (US-NRS)</h2>
-    <div class="note" style="color:var(--muted);font-size:12px">AI-researched (Gemini + Google Search) score out of 100 for the neighbourhood only, not the property as an investment. Takes about a minute.</div>
-    <button id="nrsGo">Rate neighbourhood</button>
-    <div id="nrsOut"></div>
-  </div>
-
-  <div>
-    <label>Map view</label>
-    <div class="seg" role="group" aria-label="Map view">
-      <button id="vRoad" aria-pressed="true">Map</button>
-      <button id="vSat" aria-pressed="false">Satellite</button>
-    </div>
-  </div>
-
-  <div>
-    <label>Zoom</label>
-    <div class="row">
-      <button id="zOut" aria-label="Zoom out">Zoom out</button>
-      <button id="zIn" aria-label="Zoom in">Zoom in</button>
+    <div class="hero-art" aria-hidden="true">
+      <svg viewBox="0 0 560 440" role="img">
+        <path class="road" d="M-20 372 C 150 350, 400 392, 580 360"/>
+        <path class="dash" d="M-20 372 C 150 350, 400 392, 580 360"/>
+        <g>
+          <path class="lot draw" pathLength="1" d="M40 40 L190 36 L190 126 L40 130 Z"/>
+          <path class="lot draw" pathLength="1" d="M190 36 L372 32 L372 122 L190 126 Z"/>
+          <path class="lot draw" pathLength="1" d="M372 32 L520 30 L520 118 L372 122 Z"/>
+          <path class="lot draw" pathLength="1" d="M40 130 L190 126 L190 322 L40 330 Z"/>
+          <path class="lot main draw" pathLength="1" d="M190 126 L372 122 L372 316 L190 322 Z"/>
+          <path class="lot draw" pathLength="1" d="M372 122 L520 118 L520 308 L372 316 Z"/>
+        </g>
+        <path class="house" d="M238 214 L332 210 L334 272 L240 276 Z"/>
+        <path class="house" d="M240 276 L334 272 L334 296 L242 299 Z" opacity=".7"/>
+        <path class="house" d="M84 196 L148 194 L149 246 L85 248 Z" opacity=".5"/>
+        <path class="house" d="M418 190 L482 188 L483 240 L419 242 Z" opacity=".5"/>
+        <g transform="translate(285 170)">
+          <path class="pin" d="M0 0 C-17 -2 -22 -22 -22 -30 A22 22 0 1 1 22 -30 C22 -22 17 -2 0 0 Z" transform="translate(0 6)"/>
+          <circle class="pinhole" cx="0" cy="-24" r="8"/>
+        </g>
+      </svg>
     </div>
   </div>
+  <div class="proof">
+    <div><h2>The record</h2><p>Beds, baths, living area, lot, year built and last sale, from public records.</p></div>
+    <div><h2>The rent</h2><p>Median rent from nearby listings, sized to the property and adjustable.</p></div>
+    <div><h2>The neighbourhood</h2><p>A score out of 100 and a letter grade from ten weighted factors, with sources.</p></div>
+  </div>
+  <p class="foot-note">Information only. Not an appraisal, legal or financial advice. <a href="privacy.html">Privacy</a> and <a href="terms.html">Terms</a>.</p>
+</section>
 
-  <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener" style="display:none">Open as image</a>
+<!-- ============ Workspace ============ -->
+<main id="work">
+  <aside id="panel" aria-label="Property report">
+    <div id="slotPanel"></div>
+    <div id="found"></div>
+    <div id="acc"></div>
+    <div class="kpis" id="kpis" hidden>
+      <div><b id="kBeds">—</b><span>Layout</span></div>
+      <div><b id="kRent">—</b><span>Median rent</span></div>
+      <div><b id="kGrade">—</b><span>Neighbourhood</span></div>
+    </div>
 
-  <small>Lines between lots come from Google’s base map and are not a legal survey. Coverage varies by area.</small>
-</aside>
+    <div class="tabs" role="tablist" aria-label="Report sections">
+      <button type="button" role="tab" id="tabProp" aria-controls="pProp" aria-selected="true">Property</button>
+      <button type="button" role="tab" id="tabRent" aria-controls="pRent" aria-selected="false" tabindex="-1">Rent</button>
+      <button type="button" role="tab" id="tabNrs" aria-controls="pNrs" aria-selected="false" tabindex="-1">Neighbourhood</button>
+    </div>
 
-<main>
-  <div id="map"></div>
-  <div id="empty">Your map will appear here.</div>
+    <section class="tabpanel" id="pProp" role="tabpanel" aria-labelledby="tabProp">
+      <div id="details"></div>
+      <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
+    </section>
+
+    <section class="tabpanel" id="pRent" role="tabpanel" aria-labelledby="tabRent" hidden>
+      <div id="rent" class="tabpanel">
+        <h2>Market rent</h2>
+        <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
+        <div class="grid2">
+          <div class="f"><label for="rBeds">Bedrooms</label>
+            <select id="rBeds"><option value="0">Studio</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>
+          <div class="f"><label for="rBaths">Bathrooms</label>
+            <select id="rBaths"><option value="">Any</option><option value="1">1</option><option value="1.5+" selected>1.5 or more</option></select></div>
+          <div class="f"><label for="rType">Type</label>
+            <select id="rType"><option value="any">Any</option><option value="house" selected>House</option><option value="apartment">Apartment</option></select></div>
+          <div class="f"><label for="rBack">Look back</label>
+            <select id="rBack"><option value="90" selected>3 months</option><option value="180">6 months</option><option value="365">12 months</option><option value="730">24 months</option></select></div>
+          <div class="f"><label for="rRadius">Radius</label>
+            <select id="rRadius"><option value="0.5">0.5 mile</option><option value="1" selected>1 mile</option><option value="2">2 miles</option><option value="3">3 miles</option><option value="5">5 miles</option></select></div>
+        </div>
+        <div class="f"><label for="rMaxSqft">Max square feet (living area)</label><input id="rMaxSqft" type="text" inputmode="numeric" placeholder="optional, e.g. 2500"></div>
+        <details id="rPick"><summary>Choose results to show</summary><div id="rPickList"></div></details>
+        <button id="rentGo" class="primary" type="button">Check rents</button>
+        <div id="rentOut"></div>
+      </div>
+    </section>
+
+    <section class="tabpanel" id="pNrs" role="tabpanel" aria-labelledby="tabNrs" hidden>
+      <div id="nrs" class="tabpanel">
+        <h2>Neighbourhood rating</h2>
+        <div class="note">A score out of 100 for the neighbourhood only, from ten weighted factors, researched live with Gemini and Google Search. It takes about a minute and is not a rating of the property as an investment.</div>
+        <button id="nrsGo" class="primary" type="button">Rate neighbourhood</button>
+        <div id="nrsOut"></div>
+      </div>
+    </section>
+
+    <div class="panel-foot">
+      <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+      <small>Lot lines come from Google’s base map and are not a legal survey.</small>
+    </div>
+  </aside>
+
+  <div id="stage">
+    <div id="map"></div>
+    <div id="empty">Your map will appear here.</div>
+    <div class="mapctl">
+      <div class="seg" role="group" aria-label="Map view">
+        <button id="vRoad" type="button" aria-pressed="true">Map</button>
+        <button id="vSat" type="button" aria-pressed="false">Satellite</button>
+      </div>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button id="zOut" type="button" aria-label="Zoom out">−</button>
+        <button id="zIn" type="button" aria-label="Zoom in">+</button>
+      </div>
+      <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener noreferrer" style="display:none">Open as image</a>
+    </div>
+  </div>
 </main>
 
-<script>
-(function () {
-  // Paste your Google Maps API key between the quotes (restrict it to your website in Google Cloud).
-  var API_KEY = "AIzaSyCVNIB_r5_JyiYTvwYOpIOXRVNVnIzbNNs";
-  // Address of your Cloudflare Worker (see worker.js). Example: https://deal-check-api.yourname.workers.dev
-  var WORKER_URL = "https://deal-check-api.ranjjinisg.workers.dev";
+<!-- ============ History ============ -->
+<dialog id="histDlg" aria-labelledby="histTitle">
+  <div class="dlg-head">
+    <div><h2 id="histTitle">Search history</h2><p id="histSub">Every address you check is saved here, on this device only.</p></div>
+    <button type="button" class="quiet" id="histClose" aria-label="Close history">Close</button>
+  </div>
+  <div class="dlg-body">
+    <div class="dlg-tools">
+      <input id="histFilter" type="search" placeholder="Filter by address" aria-label="Filter history">
+      <button type="button" id="histCsv">Download CSV</button>
+      <button type="button" id="histClear" class="danger">Clear all</button>
+    </div>
+    <ul id="histList"></ul>
+    <div class="empty-state" id="histEmpty" hidden></div>
+  </div>
+</dialog>
 
-  // ---- Property details catalog ------------------------------------------------
-  // To add an attribute, add ONE line to FIELDS:
-  //   id     short unique name (letters/numbers)
-  //   label  text shown on the page
-  //   path   where the value sits in the data; use dots for nested values, e.g. "features.heatingType"
-  //   fmt    optional function(value, record) that returns the text to show
-  //   on     true = shown by default (visitors can switch fields on/off in "Choose details")
-  // Data availability varies by county; missing values show as a dash.
-  var money = function (v) { return "$" + Number(v).toLocaleString(); };
-  var sqft  = function (v) { return Number(v).toLocaleString() + " sq ft"; };
-  var yesNo = function (v) { return v ? "Yes" : "No"; };
-  var FIELDS = [
-    { id: "type",     label: "Property type", path: "propertyType", on: true },
-    { id: "beds",     label: "Bedrooms",      path: "bedrooms", on: true },
-    { id: "baths",    label: "Bathrooms",     path: "bathrooms", on: true },
-    { id: "area",     label: "Living area",   path: "squareFootage", fmt: sqft, on: true },
-    { id: "lot",      label: "Lot size",      path: "lotSize", fmt: sqft, on: true },
-    { id: "garage",   label: "Garage",        path: "features.garage", on: true, fmt: function (v, r) {
-        var f = r.features || {};
-        if (!f.garage) return "None";
-        return (f.garageSpaces ? f.garageSpaces + "-car " : "") + (f.garageType || "garage").toLowerCase();
-    } },
-    { id: "year",     label: "Year built",    path: "yearBuilt", on: true },
+<!-- ============ Privacy ============ -->
+<dialog id="privDlg" aria-labelledby="privTitle">
+  <div class="dlg-head">
+    <div><h2 id="privTitle">Your privacy</h2><p>You are in control of what this device keeps.</p></div>
+    <button type="button" class="quiet" id="privClose" aria-label="Close privacy settings">Close</button>
+  </div>
+  <div class="dlg-body">
+    <label class="setting"><input type="checkbox" id="saveHist"><span><strong>Save my search history on this device</strong><small>Turn this off and new searches are not remembered. Existing history stays until you delete it.</small></span></label>
+    <h3>What leaves your device</h3>
+    <ul>
+      <li>The address you check goes to our server, which asks RentCast (property record), Rentometer (rent) and Google (maps, suggestions, neighbourhood research) for the answer.</li>
+      <li>Your location is used only if you tap “Favour suggestions near me”, and is never stored by us.</li>
+      <li>No accounts, no advertising, no tracking cookies and no analytics.</li>
+    </ul>
+    <h3>Your data</h3>
+    <div class="dlg-tools">
+      <button type="button" id="dlData">Download my data</button>
+      <button type="button" id="delData" class="danger">Delete all my data</button>
+    </div>
+    <p>Full details are in the <a href="privacy.html">privacy policy</a> and <a href="terms.html">terms of use</a>.</p>
+  </div>
+</dialog>
 
-    // More attributes, off by default. Tick them in "Choose details" or set on: true.
-    { id: "floors",   label: "Floors",             path: "features.floorCount" },
-    { id: "rooms",    label: "Total rooms",        path: "features.roomCount" },
-    { id: "heating",  label: "Heating",            path: "features.heatingType" },
-    { id: "cooling",  label: "Cooling",            path: "features.coolingType" },
-    { id: "roof",     label: "Roof",               path: "features.roofType" },
-    { id: "pool",     label: "Pool",               path: "features.pool", fmt: yesNo },
-    { id: "fire",     label: "Fireplace",          path: "features.fireplace", fmt: yesNo },
-    { id: "hoa",      label: "HOA fee",            path: "hoa.fee", fmt: function (v) { return money(v) + " / month"; } },
-    { id: "salePx",   label: "Last sale price",    path: "lastSalePrice", fmt: money },
-    { id: "saleDt",   label: "Last sale date",     path: "lastSaleDate", fmt: function (v) { return String(v).slice(0, 10); } },
-    { id: "zoning",   label: "Zoning",             path: "zoning" },
-    { id: "subdiv",   label: "Subdivision",        path: "subdivision" },
-    { id: "county",   label: "County",             path: "county" },
-    { id: "apn",      label: "Parcel / assessor ID", path: "assessorID" },
-    { id: "owner",    label: "Owner occupied",     path: "ownerOccupied", fmt: yesNo }
-  ];
+<div id="notice" role="region" aria-label="Storage notice" hidden>
+  <p>Your searches are saved on this device only, so you can find them again. <button type="button" class="linkbtn" id="noticePriv">Manage in Privacy</button></p>
+  <button type="button" id="noticeOk">Got it</button>
+</div>
 
-  // Remember which fields the visitor turned on or off (stored in their own browser only)
-  var enabled = {};
-  FIELDS.forEach(function (f) { enabled[f.id] = !!f.on; });
-  try {
-    var savedPick = JSON.parse(localStorage.getItem("dcFields") || "null");
-    if (savedPick) FIELDS.forEach(function (f) { if (f.id in savedPick) enabled[f.id] = !!savedPick[f.id]; });
-  } catch (e) {}
-
-  var lastRecord = null;
-
-  function getPath(obj, path) {
-    return path.split(".").reduce(function (o, k) { return (o == null) ? undefined : o[k]; }, obj);
-  }
-
-  function esc(t) { var d = document.createElement("div"); d.textContent = String(t); return d.innerHTML; }
-
-  function renderPicker() {
-    var html = "";
-    FIELDS.forEach(function (f) {
-      html += '<label class="pick"><input type="checkbox" data-id="' + esc(f.id) + '"' + (enabled[f.id] ? " checked" : "") + "> " + esc(f.label) + "</label>";
-    });
-    $("pickList").innerHTML = html;
-    Array.prototype.forEach.call($("pickList").querySelectorAll("input"), function (cb) {
-      cb.addEventListener("change", function () {
-        enabled[cb.getAttribute("data-id")] = cb.checked;
-        try { localStorage.setItem("dcFields", JSON.stringify(enabled)); } catch (e) {}
-        renderDetails();
-      });
-    });
-  }
-
-  function renderDetails() {
-    var box = $("details");
-    if (!lastRecord) return;
-    var html = "<h2>Property details</h2><dl>";
-    var count = 0;
-    FIELDS.forEach(function (f) {
-      if (!enabled[f.id]) return;
-      count++;
-      var v = getPath(lastRecord, f.path);
-      var empty = (v === undefined || v === null || v === "");
-      var shown = empty ? "—" : (f.fmt ? f.fmt(v, lastRecord) : v);
-      if (f.id === "garage" && empty) shown = "—";
-      html += "<dt>" + esc(f.label) + "</dt><dd>" + esc(shown) + "</dd>";
-    });
-    html += "</dl>";
-    if (!count) html = '<div class="note">No details selected. Use "Choose details" below.</div>';
-    else html += '<div class="note">Source: public records via RentCast. May differ from listing sites.</div>';
-    box.innerHTML = html;
-  }
-
-  async function loadDetails(address) {
-    var box = $("details");
-    lastRecord = null;
-    lastAddress = address.replace(/,\s*USA$/i, "");
-    $("rAddr").value = lastAddress;
-    $("rentOut").innerHTML = "";
-    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { box.innerHTML = ""; return; }
-    box.innerHTML = '<div class="note">Loading property details…</div>';
-    try {
-      var clean = address.replace(/,\s*USA$/i, "");
-      var res = await fetch(WORKER_URL + "?address=" + encodeURIComponent(clean));
-      var data = await res.json();
-      if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
-      lastRecord = data;
-      renderDetails();
-      prefillRent();
-      checkRent();   // run the rent check automatically for the found property
-    } catch (e) {
-      box.innerHTML = '<div class="note">Could not load property details.</div>';
-    }
-  }
-
-  // ---- Rent check (Rentometer) -------------------------------------------------
-  var lastAddress = "";
-
-  function prefillRent() {
-    $("rAddr").value = lastAddress;
-    var r = lastRecord;
-    if (!r) return;
-    // Bathrooms: Any, 1 or 1.5+
-    if (typeof r.bedrooms === "number") $("rBeds").value = String(Math.max(0, Math.min(6, Math.round(r.bedrooms))));
-    // Living area from the property record is used as the maximum square footage (editable; clear it for no limit)
-    $("rMaxSqft").value = r.squareFootage ? String(Math.max(500, Math.min(10000, Math.round(r.squareFootage)))) : "";
-    if (typeof r.bathrooms === "number") $("rBaths").value = r.bathrooms >= 1.5 ? "1.5+" : "1";
-  }
-
-  function money0(v) { return (v === undefined || v === null || isNaN(v)) ? "—" : "$" + Math.round(Number(v)).toLocaleString(); }
-
-  function median(a) {
-    var b = a.slice().sort(function (x, y) { return x - y; }), n = b.length;
-    return n ? (n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2) : null;
-  }
-
-  // Which result rows to show (saved in this browser)
-  var RENT_FIELDS = [
-    { id: "mean",   label: "Average",                      on: true,  html: function (d) { return row("Average", money0(d.mean)); } },
-    { id: "range",  label: "Typical range (25th–75th)",    on: false, html: function (d) { return row("Typical range (25th–75th)", money0(d.percentile_25) + " – " + money0(d.percentile_75)); } },
-    { id: "minmax", label: "Lowest – highest",             on: true,  html: function (d) { return row("Lowest – highest", money0(d.min) + " – " + money0(d.max)); } },
-    { id: "count",  label: "Listings used",                on: true,  html: function (d) { return row("Listings used", d.samples === undefined ? "—" : d.samples); } },
-    { id: "radius", label: "Search radius used",           on: true,  html: function (d) { return d.radius_miles === undefined ? "" : row("Search radius used", d.radius_miles + " mi"); } },
-    { id: "back",   label: "Look-back used",               on: false, html: function (d) { return d.look_back_days === undefined ? "" : row("Look-back used", d.look_back_days + " days"); } }
-  ];
-  var rentOn = {};
-  RENT_FIELDS.forEach(function (f) { rentOn[f.id] = f.on; });
-  try { var sv = JSON.parse(localStorage.getItem("dcRentFields") || "null"); if (sv) RENT_FIELDS.forEach(function (f) { if (typeof sv[f.id] === "boolean") rentOn[f.id] = sv[f.id]; }); } catch (e) {}
-  var lastRent = null;
-
-  function row(label, value) { return "<dt>" + esc(label) + "</dt><dd>" + esc(value) + "</dd>"; }
-
-  function renderRentPicker() {
-    var box = $("rPickList");
-    box.innerHTML = "";
-    RENT_FIELDS.forEach(function (f) {
-      var l = document.createElement("label"); l.className = "pick";
-      var c = document.createElement("input"); c.type = "checkbox"; c.checked = !!rentOn[f.id];
-      c.addEventListener("change", function () {
-        rentOn[f.id] = c.checked;
-        try { localStorage.setItem("dcRentFields", JSON.stringify(rentOn)); } catch (e) {}
-        if (lastRent) renderRent(lastRent);
-      });
-      l.appendChild(c); l.appendChild(document.createTextNode(f.label)); box.appendChild(l);
-    });
-  }
-
-  function renderRent(d) {
-    lastRent = d;
-    var askedR = Number($("rRadius").value), askedB = Number($("rBack").value);
-    var html = '<div class="big">' + esc(money0(d.median)) + ' <span style="font-size:13px;font-weight:400;color:var(--muted)">median rent / month</span></div><dl>';
-    RENT_FIELDS.forEach(function (f) { if (rentOn[f.id]) html += f.html(d); });
-    html += "</dl>";
-    // Say so when Rentometer used a different radius or look-back than requested
-    if (d.radius_miles !== undefined && d.radius_miles !== null && Math.abs(Number(d.radius_miles) - askedR) > 0.001)
-      html += '<div class="note">You chose ' + esc(askedR) + ' mile' + (askedR === 1 ? "" : "s") + ', but Rentometer used ' + esc(d.radius_miles) + ' miles. It switches to its Smart Radius when the chosen radius holds more listings than one analysis can use.</div>';
-    if (d.look_back_days !== undefined && d.look_back_days !== null && Number(d.look_back_days) !== askedB)
-      html += '<div class="note">Rentometer used a look-back of ' + esc(d.look_back_days) + ' days.</div>';
-    if (d.max_sqft) html += '<div class="note">Limited to listings up to ' + esc(Number(d.max_sqft).toLocaleString()) + ' sq ft. Listings with no recorded size are excluded.</div>';
-    if (d.quickview_url) html += '<div class="note"><a href="' + esc(d.quickview_url) + '" target="_blank" rel="noopener">Open full Rentometer report</a></div>';
-    html += '<div class="note">Source: Rentometer. Based on nearby listings with the bedrooms, bathrooms and type chosen above and the limits above. Not a guarantee of achievable rent.</div>';
-    $("rentOut").innerHTML = html;
-  }
-
-  async function checkRent() {
-    var out = $("rentOut");
-    var addr = $("rAddr").value.trim().replace(/,\s*USA$/i, "");
-    if (!addr) { out.innerHTML = '<div class="note">Search a property first, or type an address above.</div>'; return; }
-    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
-    var bathParam = $("rBaths").value;   // "", "1" or "1.5+"
-    out.innerHTML = '<div class="note">Checking rents…</div>';
-    try {
-      var url = WORKER_URL + "/rent?address=" + encodeURIComponent(addr) + "&bedrooms=" + encodeURIComponent($("rBeds").value) +
-        "&baths=" + encodeURIComponent(bathParam) + "&building_type=" + encodeURIComponent($("rType").value) +
-        "&look_back_days=" + encodeURIComponent($("rBack").value) + "&radius_miles=" + encodeURIComponent($("rRadius").value);
-      var ms = Number(String($("rMaxSqft").value).replace(/[^0-9]/g, "")) || 0;
-      if (ms >= 500 && ms <= 10000) url += "&max_sqft=" + ms;
-      var res = await fetch(url);
-      var d = await res.json();
-      if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Rent data is unavailable right now.") + "</div>"; return; }
-      renderRent(d);
-    } catch (e) {
-      out.innerHTML = '<div class="err">Could not load rent data.</div>';
-    }
-  }
-
-  // ---- Neighborhood rating (US-NRS) -------------------------------------------
-  function safeUrl(u) {
-    try { var x = new URL(u); return x.protocol === "https:" ? x.href.replace(/"/g, "%22") : ""; } catch (e) { return ""; }
-  }
-  function ul(a) { return a && a.length ? "<ul>" + a.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "<p>—</p>"; }
-  function pe(label, text) { return text ? "<p><b>" + esc(label) + ":</b> " + esc(text) + "</p>" : ""; }
-
-  function renderNrs(d) {
-    var pr = d.property || {}, h = "";
-    h += '<div class="score"><b>' + esc(d.grade) + '</b><span>' + esc(d.total) + " / 100 · " + esc(d.classification) + " · Data confidence: " + esc(d.confidence) + "</span></div>";
-    h += "<table><tr><th>Criterion</th><th>Wt</th><th>Score</th><th>Pts</th></tr>";
-    var calc = [];
-    (d.factors || []).forEach(function (f) {
-      h += "<tr><td>" + esc(f.name) + "</td><td>" + esc(f.weight) + "%</td><td>" + esc(f.score) + "/5</td><td>" + esc(f.points) + "</td></tr>";
-      calc.push(f.points);
-    });
-    h += "<tr><td><b>Total</b></td><td>100%</td><td></td><td><b>" + esc(d.total) + "</b></td></tr></table>";
-    h += '<div class="note">Calculation: ' + esc(calc.join(" + ")) + " = " + esc(d.total) + ". Each factor: (score ÷ 5) × weight.</div>";
-    h += "<details><summary>Property and area</summary>" + pe("Address", pr.address) + pe("Neighborhood", pr.neighborhood) + pe("City / county", [pr.city, pr.county].filter(Boolean).join(" / ")) +
-      pe("ZIP", pr.zip) + pe("Census tract", pr.census_tract) + pe("Boundaries used", pr.boundaries) + pe("Evaluation date", pr.evaluation_date) + pe("Confidence note", d.confidence_note) + "</details>";
-    h += "<details><summary>Detailed analysis (10 factors)</summary>";
-    (d.factors || []).forEach(function (f) {
-      h += "<p><b>" + esc(f.name) + " — " + esc(f.score) + "/5</b><br>" + esc(f.evidence || "—");
-      (f.sources || []).forEach(function (u, i) { var s = safeUrl(u); if (s) h += ' <a href="' + s + '" target="_blank" rel="noopener noreferrer">[' + (i + 1) + "]</a>"; });
-      h += "</p>";
-    });
-    h += "</details>";
-    h += "<details><summary>Top 5 strengths</summary>" + ul(d.strengths) + "</details>";
-    h += "<details><summary>Top 5 weaknesses and risks</summary>" + ul(d.weaknesses) + "</details>";
-    var o = d.outlook || {};
-    h += "<details><summary>Investment outlook</summary>" + pe("Long-term homeownership", o.homeownership) + pe("Appreciation", o.appreciation) + pe("Rental investment", o.rental_investment) +
-      pe("Tenant demand", o.tenant_demand) + pe("Resale liquidity", o.resale_liquidity) + pe("Economic resilience", o.economic_resilience) + "</details>";
-    var v = d.verdict || {};
-    if ((d.sources_consulted || []).length) {
-      h += "<details><summary>Sources consulted</summary><ul>";
-      d.sources_consulted.forEach(function (s) { var u = safeUrl(s.uri); if (u) h += '<li><a href="' + u + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || u) + "</a></li>"; });
-      h += "</ul></details>";
-    }
-    h += "<details open><summary>Final verdict</summary>" + pe("Long-term ownership", v.long_term_ownership) + pe("Rental investment", v.rental_investment) + pe("Appreciation", v.appreciation) +
-      "<p><b>Three biggest risks:</b></p>" + ul(v.biggest_risks) + pe("Recommendation", v.recommendation) + "</details>";
-    h += '<div class="note">US-NRS rates the neighborhood only. It is not a rating of this property as an investment. AI-researched with Gemini 2.5 Flash-Lite and Google Search, so it is less thorough than the full Claude report and may contain errors. Check the sources before relying on it.</div>';
-    $("nrsOut").innerHTML = h;
-    // Google requires its "Search suggestions" to be shown with grounded results; render them in a sandboxed frame
-    if (d.search_html) {
-      var fr = document.createElement("iframe");
-      fr.setAttribute("sandbox", "allow-popups allow-popups-to-escape-sandbox");
-      fr.style.cssText = "width:100%;height:72px;border:0;margin-top:8px";
-      fr.title = "Google Search suggestions";
-      fr.srcdoc = '<base target="_blank">' + d.search_html;
-      $("nrsOut").appendChild(fr);
-    }
-  }
-
-  async function checkNrs() {
-    var out = $("nrsOut"), btn = $("nrsGo");
-    var addr = (lastAddress || $("rAddr").value || "").trim().replace(/,\s*USA$/i, "");
-    if (!addr) { out.innerHTML = '<div class="note">Search a property first.</div>'; return; }
-    if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
-    var t = lastRecord && lastRecord.propertyType;
-    var type = ["Single Family", "Townhouse", "Condo", "Multi-family"].indexOf(t) >= 0 ? t : "Single Family";
-    btn.disabled = true;
-    out.innerHTML = '<div class="note">Researching the neighbourhood (crime, income, schools, market data…). This can take a minute. Please keep this page open.</div>';
-    try {
-      var res = await fetch(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
-      var d = await res.json();
-      if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Neighborhood rating is unavailable right now.") + "</div>"; }
-      else renderNrs(d);
-    } catch (e) {
-      out.innerHTML = '<div class="err">Could not load the neighborhood rating.</div>';
-    }
-    btn.disabled = false;
-  }
-
-  var $ = function (id) { return document.getElementById(id); };
-  var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
-
-
-  function setStatus(msg, isErr) {
-    $("status").textContent = msg || "";
-    $("status").className = isErr ? "err" : "";
-  }
-
-  function loadMaps(key) {
-    return new Promise(function (resolve, reject) {
-      if (mapsLoaded && key === lastKey) return resolve();
-      if (mapsLoaded && key !== lastKey) return reject(new Error("Reload the page to use a different API key."));
-      window.__mapsReady = function () { mapsLoaded = true; lastKey = key; resolve(); };
-      window.gm_authFailure = function () { setStatus("Google rejected the API key. Check it and that billing and the required APIs are enabled.", true); };
-      var s = document.createElement("script");
-      s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(key) + "&callback=__mapsReady&loading=async";
-      s.onerror = function () { reject(new Error("Could not load Google Maps. Check your connection and API key.")); };
-      document.head.appendChild(s);
-    });
-  }
-
-  function moveTo(latLng) {
-    if (marker) marker.setPosition(latLng);
-    lastLatLng = { lat: latLng.lat(), lng: latLng.lng() };
-    $("acc").textContent = "Pin moved by you.";
-    updateStaticLink();
-  }
-
-  function setView(type) {
-    $("vRoad").setAttribute("aria-pressed", type === "roadmap");
-    $("vSat").setAttribute("aria-pressed", type === "satellite");
-    if (map) map.setMapTypeId(type);
-    updateStaticLink();
-  }
-
-  function currentType() { return $("vSat").getAttribute("aria-pressed") === "true" ? "satellite" : "roadmap"; }
-
-  function updateStaticLink() {
-    if (!lastLatLng) return;
-    var z = map ? map.getZoom() : 20;
-    var url = "https://maps.googleapis.com/maps/api/staticmap?center=" + lastLatLng.lat + "," + lastLatLng.lng +
-      "&zoom=" + z + "&size=640x640&scale=2&maptype=" + currentType() +
-      "&markers=color:red%7C" + lastLatLng.lat + "," + lastLatLng.lng + "&key=" + encodeURIComponent(lastKey);
-    $("staticLink").href = url;
-    $("staticLink").style.display = "block";
-  }
-
-  async function show() {
-    var key = API_KEY.trim(), addr = $("addr").value.trim();
-    if (!key || key === "PASTE_YOUR_KEY_HERE") return setStatus("The site owner has not added an API key yet.", true);
-    if (!addr) return setStatus("Enter a property address.", true);
-    setStatus("Looking up address…");
-    $("found").textContent = "";
-    try {
-      await loadMaps(key);
-      var geocoder = new google.maps.Geocoder();
-      var res = await geocoder.geocode({ address: addr, componentRestrictions: { country: "US" } });
-      if (!res.results || !res.results.length) return setStatus("No match found. Add the city and state and try again.", true);
-      var r = res.results[0], loc = r.geometry.location;
-      lastLatLng = { lat: loc.lat(), lng: loc.lng() };
-      $("empty").style.display = "none";
-      if (!map) {
-        map = new google.maps.Map($("map"), {
-          center: loc, zoom: 20, mapTypeId: currentType(),
-          mapTypeControl: false, streetViewControl: true, fullscreenControl: true, tilt: 0
-        });
-        map.addListener("zoom_changed", updateStaticLink);
-      } else { map.setCenter(loc); map.setZoom(20); }
-      if (marker) marker.setMap(null);
-      marker = new google.maps.Marker({ position: loc, map: map, title: r.formatted_address, draggable: true });
-      marker.addListener("dragend", function (ev) { moveTo(ev.latLng); });
-      if (!map.__clickBound) { map.__clickBound = true; map.addListener("click", function (ev) { moveTo(ev.latLng); }); }
-      var lt = r.geometry.location_type;
-      $("acc").textContent = lt === "ROOFTOP"
-        ? "Pin is at the exact building."
-        : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
-      $("found").textContent = r.formatted_address;
-      saveRecent(r.formatted_address);
-      loadDetails(r.formatted_address);
-      setStatus("");
-      updateStaticLink();
-    } catch (e) {
-      var msg = (e && e.message) ? e.message : "Something went wrong.";
-      if (/ZERO_RESULTS/.test(msg)) msg = "No match found. Add the city and state and try again.";
-      else if (/REQUEST_DENIED/.test(msg)) msg = "Request denied. Enable the Geocoding API and billing for this key.";
-      setStatus(msg, true);
-    }
-  }
-
-  renderPicker();
-  renderRentPicker();
-  $("rentGo").addEventListener("click", checkRent);
-  $("nrsGo").addEventListener("click", checkNrs);
-  $("go").addEventListener("click", show);
-  // ---- Address suggestions: recent searches + Google Places, biased to your location ----
-  var RECENT_KEY = "dcRecent", recent = [], geo = null, acItems = [], acIndex = -1, acTimer = null, acSeq = 0, placesLib = null, placesDown = false;
-  try { recent = (JSON.parse(localStorage.getItem(RECENT_KEY) || "[]") || []).filter(function (s) { return typeof s === "string"; }).slice(0, 8); } catch (e) { recent = []; }
-
-  function saveRecent(addr) {
-    addr = String(addr || "").replace(/,\s*USA$/i, "").trim();
-    if (!addr) return;
-    recent = [addr].concat(recent.filter(function (x) { return x.toLowerCase() !== addr.toLowerCase(); })).slice(0, 8);
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch (e) {}
-  }
-  function clearRecent() { recent = []; try { localStorage.removeItem(RECENT_KEY); } catch (e) {} closeSuggest(); }
-
-  function askLocation() {
-    var b = $("geoBtn");
-    if (!navigator.geolocation) { b.textContent = "Location is not available in this browser"; b.disabled = true; return; }
-    b.textContent = "Finding your location…";
-    navigator.geolocation.getCurrentPosition(function (p) {
-      geo = { lat: p.coords.latitude, lng: p.coords.longitude };
-      b.textContent = "Suggestions are favouring places near you"; b.disabled = true;
-      try { localStorage.setItem("dcGeo", "1"); } catch (e) {}
-    }, function () { b.textContent = "Location not shared. Click to try again."; }, { maximumAge: 600000, timeout: 8000 });
-  }
-
-  function closeSuggest() { acItems = []; acIndex = -1; $("acList").style.display = "none"; $("acList").innerHTML = ""; $("addr").setAttribute("aria-expanded", "false"); $("addr").removeAttribute("aria-activedescendant"); }
-
-  function renderSuggest(places) {
-    var q = $("addr").value.trim().toLowerCase();
-    var rec = recent.filter(function (r) { return !q || r.toLowerCase().indexOf(q) >= 0; }).slice(0, q ? 3 : 8);
-    var seen = {}; rec.forEach(function (r) { seen[r.toLowerCase()] = 1; });
-    var pl = (places || []).filter(function (p) { return !seen[p.text.replace(/,\s*USA$/i, "").toLowerCase()]; });
-    acItems = []; var box = $("acList"); box.innerHTML = "";
-    function group(title, arr, kind) {
-      if (!arr.length) return;
-      var g = document.createElement("div"); g.className = "grp"; g.textContent = title; box.appendChild(g);
-      arr.forEach(function (it) {
-        var o = document.createElement("div"); o.className = "opt"; o.setAttribute("role", "option"); o.id = "acOpt" + acItems.length;
-        var text = kind === "recent" ? it : it.text.replace(/,\s*USA$/i, "");
-        if (kind === "recent") { o.textContent = it; }
-        else { o.textContent = it.main || text; if (it.sec) { var s = document.createElement("small"); s.textContent = it.sec; o.appendChild(s); } }
-        var idx = acItems.length; acItems.push(text);
-        o.addEventListener("mousedown", function (ev) { ev.preventDefault(); chooseSuggest(idx); });
-        box.appendChild(o);
-      });
-    }
-    group("Recent searches", rec, "recent");
-    group("Suggestions", pl, "place");
-    if (!acItems.length) { closeSuggest(); return; }
-    if (rec.length || !geo) {
-      var f = document.createElement("div"); f.className = "foot"; f.style.display = "flex"; f.style.gap = "14px"; f.style.flexWrap = "wrap";
-      if (!geo) {
-        var l = document.createElement("button"); l.type = "button"; l.className = "linkbtn"; l.id = "acGeo"; l.textContent = "Use my location";
-        l.addEventListener("mousedown", function (ev) { ev.preventDefault(); closeSuggest(); askLocation(); });
-        f.appendChild(l);
-      }
-      if (rec.length) {
-        var c = document.createElement("button"); c.type = "button"; c.className = "linkbtn"; c.textContent = "Clear recent searches";
-        c.addEventListener("mousedown", function (ev) { ev.preventDefault(); clearRecent(); });
-        f.appendChild(c);
-      }
-      box.appendChild(f);
-    }
-    acIndex = -1; box.style.display = "block"; $("addr").setAttribute("aria-expanded", "true");
-  }
-
-  function markActive() {
-    var opts = $("acList").querySelectorAll(".opt");
-    for (var i = 0; i < opts.length; i++) opts[i].setAttribute("aria-selected", i === acIndex ? "true" : "false");
-    if (acIndex >= 0 && opts[acIndex]) { $("addr").setAttribute("aria-activedescendant", opts[acIndex].id); opts[acIndex].scrollIntoView({ block: "nearest" }); }
-  }
-
-  function chooseSuggest(i) { if (i < 0 || i >= acItems.length) return; $("addr").value = acItems[i]; closeSuggest(); show(); }
-
-  async function fetchPlaces(q) {
-    var key = API_KEY.trim();
-    if (placesDown || !key || key.indexOf("PASTE_") === 0) return [];
-    await loadMaps(key);
-    if (!placesLib) placesLib = await google.maps.importLibrary("places");
-    var req = { input: q, includedRegionCodes: ["us"] };
-    var c = geo || lastLatLng;
-    if (c) req.locationBias = { center: { lat: c.lat, lng: c.lng }, radius: 50000 };
-    var out = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
-    return (out.suggestions || []).filter(function (s) { return s.placePrediction; }).slice(0, 5).map(function (s) {
-      var p = s.placePrediction;
-      return { text: String(p.text && p.text.text || ""), main: String(p.mainText && p.mainText.text || ""), sec: String(p.secondaryText && p.secondaryText.text || "") };
-    }).filter(function (x) { return x.text; });
-  }
-
-  function onAddrInput() {
-    clearTimeout(acTimer);
-    var q = $("addr").value.trim(), seq = ++acSeq;
-    renderSuggest([]);                       // recent searches show immediately
-    if (q.length < 3) return;
-    acTimer = setTimeout(async function () {
-      try {
-        var places = await fetchPlaces(q);
-        if (seq === acSeq && document.activeElement === $("addr")) renderSuggest(places);
-      } catch (e) {
-        placesDown = true;                    // e.g. Places API not enabled for the key: fall back to recent searches only
-        if (window.console) console.warn("Address suggestions unavailable:", e && e.message);
-      }
-    }, 300);
-  }
-
-  function onAddrKey(e) {
-    var open = $("acList").style.display === "block";
-    if (e.key === "ArrowDown" && open) { e.preventDefault(); acIndex = (acIndex + 1) % acItems.length; markActive(); }
-    else if (e.key === "ArrowUp" && open) { e.preventDefault(); acIndex = (acIndex - 1 + acItems.length) % acItems.length; markActive(); }
-    else if (e.key === "Escape") { closeSuggest(); }
-    else if (e.key === "Enter") { if (open && acIndex >= 0) { e.preventDefault(); chooseSuggest(acIndex); } else { closeSuggest(); show(); } }
-  }
-
-  $("addr").addEventListener("input", onAddrInput);
-  $("addr").addEventListener("focus", function () { renderSuggest([]); });
-  $("addr").addEventListener("blur", function () { setTimeout(closeSuggest, 150); });
-  $("addr").addEventListener("keydown", onAddrKey);
-  $("geoBtn").addEventListener("click", askLocation);
-  try {   // if you already allowed location for this site, use it without asking again
-    if (navigator.permissions && localStorage.getItem("dcGeo") === "1") navigator.permissions.query({ name: "geolocation" }).then(function (s) { if (s.state === "granted") askLocation(); }).catch(function () {});
-  } catch (e) {}
-
-  $("vRoad").addEventListener("click", function () { setView("roadmap"); });
-  $("vSat").addEventListener("click", function () { setView("satellite"); });
-  $("zIn").addEventListener("click", function () { if (map) map.setZoom(map.getZoom() + 1); });
-  $("zOut").addEventListener("click", function () { if (map) map.setZoom(map.getZoom() - 1); });
-})();
-</script>
+<script src="app.js"></script>
 </body>
 </html>
