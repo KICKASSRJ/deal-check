@@ -57,6 +57,15 @@
   #nrsOut details { margin-top: 8px; } #nrsOut summary { cursor: pointer; color: var(--accent); font-weight: 500; }
   #nrsOut p, #nrsOut li { margin: 6px 0; font-size: 13px; line-height: 1.45; } #nrsOut ul { padding-left: 18px; margin: 4px 0; }
   #nrsOut .note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.4; } #nrsOut .err { color: var(--err); font-size: 13px; }
+  .acwrap { position: relative; }
+  #acList { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin-top: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; max-height: 300px; overflow-y: auto; box-shadow: 0 6px 18px rgba(0,0,0,.15); }
+  #acList .grp { font-size: 11px; color: var(--muted); padding: 8px 10px 2px; text-transform: uppercase; letter-spacing: .04em; }
+  #acList .opt { padding: 8px 10px; cursor: pointer; font-size: 14px; line-height: 1.3; }
+  #acList .opt small { display: block; color: var(--muted); font-size: 12px; }
+  #acList .opt[aria-selected=true], #acList .opt:hover { background: var(--bg); }
+  #acList .foot { padding: 6px 10px; border-top: 1px solid var(--line); }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+  .linkbtn:disabled { color: var(--muted); cursor: default; }
   label.pick { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
   #rent { font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
   #rent h2 { font-size: 15px; margin: 0; font-weight: 600; }
@@ -92,7 +101,11 @@
 
   <div>
     <label for="addr">Property address</label>
-    <input id="addr" type="text" placeholder="e.g. 22617 SE 32nd St, Sammamish, WA" autocomplete="off">
+    <div class="acwrap">
+      <input id="addr" type="text" placeholder="e.g. 22617 SE 32nd St, Sammamish, WA" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="acList">
+      <div id="acList" role="listbox" aria-label="Address suggestions"></div>
+    </div>
+    <button type="button" id="geoBtn" class="linkbtn" style="margin-top:6px">Use my location to improve suggestions</button>
   </div>
 
   <button class="primary" id="go">Show property</button>
@@ -519,6 +532,7 @@
         ? "Pin is at the exact building."
         : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
       $("found").textContent = r.formatted_address;
+      saveRecent(r.formatted_address);
       loadDetails(r.formatted_address);
       setStatus("");
       updateStaticLink();
@@ -535,7 +549,126 @@
   $("rentGo").addEventListener("click", checkRent);
   $("nrsGo").addEventListener("click", checkNrs);
   $("go").addEventListener("click", show);
-  $("addr").addEventListener("keydown", function (e) { if (e.key === "Enter") show(); });
+  // ---- Address suggestions: recent searches + Google Places, biased to your location ----
+  var RECENT_KEY = "dcRecent", recent = [], geo = null, acItems = [], acIndex = -1, acTimer = null, acSeq = 0, placesLib = null, placesDown = false;
+  try { recent = (JSON.parse(localStorage.getItem(RECENT_KEY) || "[]") || []).filter(function (s) { return typeof s === "string"; }).slice(0, 8); } catch (e) { recent = []; }
+
+  function saveRecent(addr) {
+    addr = String(addr || "").replace(/,\s*USA$/i, "").trim();
+    if (!addr) return;
+    recent = [addr].concat(recent.filter(function (x) { return x.toLowerCase() !== addr.toLowerCase(); })).slice(0, 8);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch (e) {}
+  }
+  function clearRecent() { recent = []; try { localStorage.removeItem(RECENT_KEY); } catch (e) {} closeSuggest(); }
+
+  function askLocation() {
+    var b = $("geoBtn");
+    if (!navigator.geolocation) { b.textContent = "Location is not available in this browser"; b.disabled = true; return; }
+    b.textContent = "Finding your location…";
+    navigator.geolocation.getCurrentPosition(function (p) {
+      geo = { lat: p.coords.latitude, lng: p.coords.longitude };
+      b.textContent = "Suggestions are favouring places near you"; b.disabled = true;
+      try { localStorage.setItem("dcGeo", "1"); } catch (e) {}
+    }, function () { b.textContent = "Location not shared. Click to try again."; }, { maximumAge: 600000, timeout: 8000 });
+  }
+
+  function closeSuggest() { acItems = []; acIndex = -1; $("acList").style.display = "none"; $("acList").innerHTML = ""; $("addr").setAttribute("aria-expanded", "false"); $("addr").removeAttribute("aria-activedescendant"); }
+
+  function renderSuggest(places) {
+    var q = $("addr").value.trim().toLowerCase();
+    var rec = recent.filter(function (r) { return !q || r.toLowerCase().indexOf(q) >= 0; }).slice(0, q ? 3 : 8);
+    var seen = {}; rec.forEach(function (r) { seen[r.toLowerCase()] = 1; });
+    var pl = (places || []).filter(function (p) { return !seen[p.text.replace(/,\s*USA$/i, "").toLowerCase()]; });
+    acItems = []; var box = $("acList"); box.innerHTML = "";
+    function group(title, arr, kind) {
+      if (!arr.length) return;
+      var g = document.createElement("div"); g.className = "grp"; g.textContent = title; box.appendChild(g);
+      arr.forEach(function (it) {
+        var o = document.createElement("div"); o.className = "opt"; o.setAttribute("role", "option"); o.id = "acOpt" + acItems.length;
+        var text = kind === "recent" ? it : it.text.replace(/,\s*USA$/i, "");
+        if (kind === "recent") { o.textContent = it; }
+        else { o.textContent = it.main || text; if (it.sec) { var s = document.createElement("small"); s.textContent = it.sec; o.appendChild(s); } }
+        var idx = acItems.length; acItems.push(text);
+        o.addEventListener("mousedown", function (ev) { ev.preventDefault(); chooseSuggest(idx); });
+        box.appendChild(o);
+      });
+    }
+    group("Recent searches", rec, "recent");
+    group("Suggestions", pl, "place");
+    if (!acItems.length) { closeSuggest(); return; }
+    if (rec.length || !geo) {
+      var f = document.createElement("div"); f.className = "foot"; f.style.display = "flex"; f.style.gap = "14px"; f.style.flexWrap = "wrap";
+      if (!geo) {
+        var l = document.createElement("button"); l.type = "button"; l.className = "linkbtn"; l.id = "acGeo"; l.textContent = "Use my location";
+        l.addEventListener("mousedown", function (ev) { ev.preventDefault(); closeSuggest(); askLocation(); });
+        f.appendChild(l);
+      }
+      if (rec.length) {
+        var c = document.createElement("button"); c.type = "button"; c.className = "linkbtn"; c.textContent = "Clear recent searches";
+        c.addEventListener("mousedown", function (ev) { ev.preventDefault(); clearRecent(); });
+        f.appendChild(c);
+      }
+      box.appendChild(f);
+    }
+    acIndex = -1; box.style.display = "block"; $("addr").setAttribute("aria-expanded", "true");
+  }
+
+  function markActive() {
+    var opts = $("acList").querySelectorAll(".opt");
+    for (var i = 0; i < opts.length; i++) opts[i].setAttribute("aria-selected", i === acIndex ? "true" : "false");
+    if (acIndex >= 0 && opts[acIndex]) { $("addr").setAttribute("aria-activedescendant", opts[acIndex].id); opts[acIndex].scrollIntoView({ block: "nearest" }); }
+  }
+
+  function chooseSuggest(i) { if (i < 0 || i >= acItems.length) return; $("addr").value = acItems[i]; closeSuggest(); show(); }
+
+  async function fetchPlaces(q) {
+    var key = API_KEY.trim();
+    if (placesDown || !key || key.indexOf("PASTE_") === 0) return [];
+    await loadMaps(key);
+    if (!placesLib) placesLib = await google.maps.importLibrary("places");
+    var req = { input: q, includedRegionCodes: ["us"] };
+    var c = geo || lastLatLng;
+    if (c) req.locationBias = { center: { lat: c.lat, lng: c.lng }, radius: 50000 };
+    var out = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+    return (out.suggestions || []).filter(function (s) { return s.placePrediction; }).slice(0, 5).map(function (s) {
+      var p = s.placePrediction;
+      return { text: String(p.text && p.text.text || ""), main: String(p.mainText && p.mainText.text || ""), sec: String(p.secondaryText && p.secondaryText.text || "") };
+    }).filter(function (x) { return x.text; });
+  }
+
+  function onAddrInput() {
+    clearTimeout(acTimer);
+    var q = $("addr").value.trim(), seq = ++acSeq;
+    renderSuggest([]);                       // recent searches show immediately
+    if (q.length < 3) return;
+    acTimer = setTimeout(async function () {
+      try {
+        var places = await fetchPlaces(q);
+        if (seq === acSeq && document.activeElement === $("addr")) renderSuggest(places);
+      } catch (e) {
+        placesDown = true;                    // e.g. Places API not enabled for the key: fall back to recent searches only
+        if (window.console) console.warn("Address suggestions unavailable:", e && e.message);
+      }
+    }, 300);
+  }
+
+  function onAddrKey(e) {
+    var open = $("acList").style.display === "block";
+    if (e.key === "ArrowDown" && open) { e.preventDefault(); acIndex = (acIndex + 1) % acItems.length; markActive(); }
+    else if (e.key === "ArrowUp" && open) { e.preventDefault(); acIndex = (acIndex - 1 + acItems.length) % acItems.length; markActive(); }
+    else if (e.key === "Escape") { closeSuggest(); }
+    else if (e.key === "Enter") { if (open && acIndex >= 0) { e.preventDefault(); chooseSuggest(acIndex); } else { closeSuggest(); show(); } }
+  }
+
+  $("addr").addEventListener("input", onAddrInput);
+  $("addr").addEventListener("focus", function () { renderSuggest([]); });
+  $("addr").addEventListener("blur", function () { setTimeout(closeSuggest, 150); });
+  $("addr").addEventListener("keydown", onAddrKey);
+  $("geoBtn").addEventListener("click", askLocation);
+  try {   // if you already allowed location for this site, use it without asking again
+    if (navigator.permissions && localStorage.getItem("dcGeo") === "1") navigator.permissions.query({ name: "geolocation" }).then(function (s) { if (s.state === "granted") askLocation(); }).catch(function () {});
+  } catch (e) {}
+
   $("vRoad").addEventListener("click", function () { setView("roadmap"); });
   $("vSat").addEventListener("click", function () { setView("satellite"); });
   $("zIn").addEventListener("click", function () { if (map) map.setZoom(map.getZoom() + 1); });
