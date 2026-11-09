@@ -97,26 +97,68 @@
     box.innerHTML = html;
   }
 
+  // ---- Apartments, condos and other buildings with several homes ---------------
+  var UNIT_PART = "(?:\\b(?:unit|apt|apartment|suite|ste)\\.?\\s*#?\\s*[A-Za-z0-9-]+|#\\s*[A-Za-z0-9-]+)";
+  function hasUnit(a) { return new RegExp(UNIT_PART, "i").test(String(a || "")); }
+  function stripUnit(a) { return String(a || "").replace(new RegExp(",?\\s*" + UNIT_PART, "ig"), "").replace(/\s{2,}/g, " ").trim(); }
+  function withUnit(a, unit) {
+    var u = String(unit).replace(/[^A-Za-z0-9 -]/g, "").trim().slice(0, 12), i = a.indexOf(",");
+    return i < 0 ? a + " Unit " + u : a.slice(0, i) + " Unit " + u + a.slice(i);
+  }
+  function unitOf(a) { var m = new RegExp(UNIT_PART, "i").exec(String(a || "")); return m ? m[0].replace(/^(?:unit|apt|apartment|suite|ste)\.?\s*#?\s*|^#\s*/i, "").trim() : ""; }
+  // Which kind of multi-home building is this record? "" if it is a house, townhome or similar
+  function buildingKind(rec) {
+    var t = String((rec && rec.propertyType) || "").toLowerCase(), units = Number(rec && rec.features && rec.features.unitCount) || 0;
+    if (t === "apartment" || t === "multi-family" || t === "multifamily") return "apartment";
+    if (t === "condo") return "condo";
+    return units > 1 ? "apartment" : "";
+  }
+  function showBuilding(rec, address) {
+    var kind = buildingKind(rec), box = $("bldg");
+    if (!kind) { box.hidden = true; return ""; }
+    var u = unitOf(address), units = Number(rec.features && rec.features.unitCount) || 0;
+    var what = kind === "condo" ? "condo building" : "building with several homes";
+    $("bldgTitle").textContent = u ? "Showing unit " + u : (kind === "condo" ? "This is a condo building" : "This is a building with several homes");
+    $("bldgText").textContent = u
+      ? "If the figures below look like the whole " + what + ", check the unit number and try again. Rent is estimated from nearby listings, so make sure the bedroom count matches this unit."
+      : "Public records at this address describe the whole " + what + (units ? " (" + units + " units)" : "") + ", not one home, so the bedrooms, size and year built may not match any single unit. Enter a unit number to look up one home. Rent and the neighbourhood rating are estimates for the area, so choose the bedrooms of the unit you care about.";
+    $("unitNo").value = u; $("unitGo").textContent = u ? "Change unit" : "Check this unit";
+    box.hidden = false;
+    return u ? "unit" : "building";
+  }
+
   async function loadDetails(address) {
     var box = $("details");
     lastRecord = null; lastRent = null; lastGrade = "";
     $("kBeds").textContent = "—"; $("kArea").textContent = "—"; $("kRent").textContent = "—"; $("kGrade").textContent = "—"; $("nrsOut").innerHTML = "";
-    lastAddress = address.replace(/,\s*USA$/i, "");
+    lastAddress = stripUnit(address.replace(/,\s*USA$/i, ""));   // rent and neighbourhood are for the area, so they use the street address without the unit
     $("rAddr").value = lastAddress;
-    $("rentOut").innerHTML = "";
+    $("rentOut").innerHTML = ""; $("bldg").hidden = true;
     if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { box.innerHTML = ""; return; }
     box.innerHTML = '<div class="note">Loading property details…</div>';
     try {
       var clean = address.replace(/,\s*USA$/i, "");
       var res = await apiGet(WORKER_URL + "?address=" + encodeURIComponent(clean));
       var data = await res.json();
-      if (!res.ok) { box.innerHTML = '<div class="note">' + esc(data.error || "Property details are unavailable right now.") + "</div>"; return; }
+      if (!res.ok) {
+        var msg = data.error || "Property details are unavailable right now.";
+        if (res.status === 404 && hasUnit(clean)) msg = "No public record was found for that unit. Check the unit number, or search the building's street address on its own.";
+        box.innerHTML = '<div class="note">' + esc(msg) + "</div>"; return;
+      }
       lastRecord = data;
       histUpdate({ beds: data.bedrooms, baths: data.bathrooms, sqft: data.squareFootage, ptype: data.propertyType });
       updateKpis();
       renderDetails();
-      prefillRent();
-      checkRent();   // run the rent check automatically for the found property
+      var bk = showBuilding(data, clean);
+      if (bk === "building") {
+        // A whole-building record says little about one home: do not guess the unit's size or bedrooms
+        $("rAddr").value = lastAddress; $("rType").value = "apartment"; $("rMaxSqft").value = "";
+        $("rentOut").innerHTML = '<div class="note">Choose the number of bedrooms for the unit you are checking, then click Check rents.</div>';
+      } else {
+        prefillRent();
+        if (bk === "unit") $("rType").value = "apartment";
+        checkRent();   // run the rent check automatically for the found property
+      }
     } catch (e) {
       box.innerHTML = '<div class="note">Could not load property details.</div>';
     }
@@ -284,8 +326,8 @@
     var addr = (lastAddress || $("rAddr").value || "").trim().replace(/,\s*USA$/i, "");
     if (!addr) { out.innerHTML = '<div class="note">Search a property first.</div>'; return; }
     if (!WORKER_URL || WORKER_URL.indexOf("PASTE_") === 0) { out.innerHTML = '<div class="err">The site owner has not set up the data service yet.</div>'; return; }
-    var t = lastRecord && lastRecord.propertyType;
-    var type = ["Single Family", "Townhouse", "Condo", "Multi-family"].indexOf(t) >= 0 ? t : "Single Family";
+    var t = String((lastRecord && lastRecord.propertyType) || "").toLowerCase();
+    var type = t === "townhouse" ? "Townhouse" : t === "condo" ? "Condo" : (t === "multi-family" || t === "apartment" || t === "multifamily") ? "Multi-family" : "Single Family";
     btn.disabled = true;
     out.innerHTML = '<div class="note">Researching the neighbourhood (crime, income, schools, market data…). This can take a minute. Please keep this page open.</div>';
     try {
@@ -353,8 +395,10 @@
     $("staticLink").style.display = "block";
   }
 
-  async function show() {
+  async function show(unitArg) {
+    var unit = typeof unitArg === "string" ? unitArg.trim() : "";
     var key = API_KEY.trim(), addr = $("addr").value.trim();
+    if (unit) addr = withUnit(stripUnit(addr), unit);
     if (!key || key === "PASTE_YOUR_KEY_HERE") return setStatus("The site owner has not added an API key yet.", true);
     if (!addr) return setStatus("Enter a property address.", true);
     setStatus("Looking up address…");
@@ -365,6 +409,8 @@
       var res = await geocoder.geocode({ address: addr, componentRestrictions: { country: "US" } });
       if (!res.results || !res.results.length) return setStatus("No match found. Add the city and state and try again.", true);
       var r = res.results[0], loc = r.geometry.location;
+      var shown = r.formatted_address;
+      if (unit && !hasUnit(shown)) shown = withUnit(shown, unit);   // Google often drops the unit; keep it
       lastLatLng = { lat: loc.lat(), lng: loc.lng() };
       enterWorkspace();
       $("empty").style.display = "none";
@@ -383,9 +429,9 @@
       $("acc").textContent = lt === "ROOFTOP"
         ? "Pin is at the exact building."
         : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
-      $("found").textContent = r.formatted_address;
-      histStart(r.formatted_address);
-      loadDetails(r.formatted_address);
+      $("found").textContent = shown;
+      histStart(shown);
+      loadDetails(shown);
       setStatus("");
       updateStaticLink();
     } catch (e) {
@@ -533,7 +579,7 @@
   function enterWorkspace() {
     if (!document.body.classList.contains("home")) return;
     document.body.classList.remove("home");
-    $("slotPanel").appendChild($("searchbox"));
+    $("slotPanel").appendChild($("searchbox"));   // the search box moves into the top bar
     $("kpis").hidden = false;
     window.scrollTo(0, 0);
   }
@@ -780,6 +826,17 @@
   }
   $("wReset").addEventListener("click", function () { saveWeights(defaultWeights()); buildWeights(); if (lastNrs) renderNrs(lastNrs); });
   buildWeights();
+
+  // Unit number for apartments and condos
+  function submitUnit() {
+    var u = $("unitNo").value.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9 -]{0,9}$/.test(u)) { $("unitErr").textContent = "Enter a unit number such as 4B or 1203."; return; }
+    $("unitErr").textContent = "";
+    $("addr").value = lastAddress;
+    show(u);
+  }
+  $("unitGo").addEventListener("click", submitUnit);
+  $("unitNo").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); submitUnit(); } });
 
   refreshHistUi();
 })();

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108f">
+<link rel="stylesheet" href="style.css?v=20261108h">
 </head>
 <body class="home">
 
@@ -18,6 +18,7 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M4 9l12-5 12 5v14l-12 5-12-5z"/><path d="M16 4v24M4 9l12 5 12-5" opacity=".55"/><circle cx="16" cy="14" r="2.6" fill="currentColor" stroke="none"/></svg>
     Deal Check
   </a>
+  <div id="slotPanel" class="barsearch"></div>
   <nav aria-label="Main">
     <button type="button" class="quiet" id="histBtn">History <span class="count" id="histCount">0</span></button>
     <button type="button" class="quiet" id="privBtn">Privacy</button>
@@ -81,6 +82,34 @@
 
 <!-- ============ Workspace ============ -->
 <main id="work">
+  <section class="quad" id="qOver" aria-label="Overview and property details">
+    <div class="idrow"><div id="found"></div><div id="acc"></div></div>
+    <div id="bldg" class="callout" hidden role="note">
+      <strong id="bldgTitle"></strong>
+      <p id="bldgText"></p>
+      <div class="unitrow">
+        <label for="unitNo" class="sr">Unit number</label>
+        <input id="unitNo" type="text" maxlength="10" autocomplete="off" placeholder="Unit number, e.g. 4B">
+        <button id="unitGo" class="primary" type="button">Check this unit</button>
+      </div>
+      <div id="unitErr" class="err" role="alert"></div>
+    </div>
+    <div class="kpis" id="kpis" hidden>
+      <div><span>Layout</span><b id="kBeds">—</b></div>
+      <div><span>Living area</span><b id="kArea">—</b></div>
+      <div><span>Median rent</span><b id="kRent">—</b></div>
+      <div><span>Neighbourhood</span><b id="kGrade">—</b></div>
+    </div>
+    <section class="plain" id="pProp">
+      <div id="details"></div>
+      <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
+    </section>
+    <div class="panel-foot">
+      <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
+      <small>Lot lines come from Google’s base map and are not a legal survey.</small>
+    </div>
+  </section>
+
   <div id="stage">
     <div id="map"></div>
     <div id="empty">Your map will appear here.</div>
@@ -97,29 +126,7 @@
     </div>
   </div>
 
-  <div id="panel" aria-label="Property report">
-    <div class="hero-card">
-      <div class="hc-id">
-        <div id="found"></div>
-        <div id="acc"></div>
-      </div>
-      <div id="slotPanel"></div>
-    </div>
-
-    <div class="kpis" id="kpis" hidden>
-      <div><span>Layout</span><b id="kBeds">—</b></div>
-      <div><span>Living area</span><b id="kArea">—</b></div>
-      <div><span>Median rent</span><b id="kRent">—</b></div>
-      <div><span>Neighbourhood</span><b id="kGrade">—</b></div>
-    </div>
-
-    <div class="cols">
-    <section class="block" id="pProp">
-      <div id="details"></div>
-      <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
-    </section>
-
-    <section class="block" id="pRent">
+    <section class="quad" id="pRent">
       <div id="rent" class="tabpanel">
         <h2>Market rent</h2>
         <div class="f"><label for="rAddr">Address</label><input id="rAddr" type="text" autocomplete="off"></div>
@@ -142,7 +149,7 @@
       </div>
     </section>
 
-    <section class="block" id="pNrs">
+    <section class="quad" id="pNrs">
       <div id="nrs" class="tabpanel">
         <h2>Neighbourhood rating</h2>
         <div class="note">A score out of 100 for the neighbourhood only, from ten weighted factors, researched live with Gemini and Google Search. It takes about a minute and is not a rating of the property as an investment.</div>
@@ -157,13 +164,6 @@
         <div id="nrsOut"></div>
       </div>
     </section>
-    </div>
-
-    <div class="panel-foot">
-      <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
-      <small>Lot lines come from Google’s base map and are not a legal survey.</small>
-    </div>
-  </div>
 </main>
 
 <!-- ============ History ============ -->
@@ -221,6 +221,6 @@
   <button type="button" id="noticeOk">Got it</button>
 </div>
 
-<script src="app.js?v=20261108f"></script>
+<script src="app.js?v=20261108h"></script>
 </body>
 </html>
