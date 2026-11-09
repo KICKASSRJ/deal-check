@@ -128,6 +128,11 @@
   }
 
   async function loadDetails(address) {
+    await loadDetailsCore(address);
+    checkNrs();   // the neighbourhood rating runs by itself for every address
+  }
+
+  async function loadDetailsCore(address) {
     var box = $("details");
     lastRecord = null; lastRent = null; lastGrade = "";
     $("kBeds").textContent = "—"; $("kArea").textContent = "—"; $("kRent").textContent = "—"; $("kGrade").textContent = "—"; $("nrsOut").innerHTML = "";
@@ -321,7 +326,9 @@
     }
   }
 
+  var nrsSeq = 0;
   async function checkNrs() {
+    var mine = ++nrsSeq;
     var out = $("nrsOut"), btn = $("nrsGo");
     var addr = (lastAddress || $("rAddr").value || "").trim().replace(/,\s*USA$/i, "");
     if (!addr) { out.innerHTML = '<div class="note">Search a property first.</div>'; return; }
@@ -333,9 +340,11 @@
     try {
       var res = await apiGet(WORKER_URL + "/neighborhood?address=" + encodeURIComponent(addr) + "&type=" + encodeURIComponent(type));
       var d = await res.json();
+      if (mine !== nrsSeq) return;   // a newer address was searched meanwhile
       if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.error || "Neighborhood rating is unavailable right now.") + "</div>"; }
       else renderNrs(d);
     } catch (e) {
+      if (mine !== nrsSeq) return;
       out.innerHTML = '<div class="err">Could not load the neighborhood rating.</div>';
     }
     btn.disabled = false;
