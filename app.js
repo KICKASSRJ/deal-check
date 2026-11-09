@@ -100,7 +100,7 @@
   async function loadDetails(address) {
     var box = $("details");
     lastRecord = null; lastRent = null; lastGrade = "";
-    $("kBeds").textContent = "—"; $("kRent").textContent = "—"; $("kGrade").textContent = "—"; $("nrsOut").innerHTML = "";
+    $("kBeds").textContent = "—"; $("kArea").textContent = "—"; $("kRent").textContent = "—"; $("kGrade").textContent = "—"; $("nrsOut").innerHTML = "";
     lastAddress = address.replace(/,\s*USA$/i, "");
     $("rAddr").value = lastAddress;
     $("rentOut").innerHTML = "";
@@ -543,12 +543,14 @@
     if (r && typeof r.bedrooms === "number") bits.push(r.bedrooms === 0 ? "Studio" : r.bedrooms + " bd");
     if (r && typeof r.bathrooms === "number") bits.push(r.bathrooms + " ba");
     $("kBeds").textContent = bits.length ? bits.join(", ") : "—";
+    $("kArea").textContent = r && r.squareFootage ? Number(r.squareFootage).toLocaleString() + " sq ft" : "—";
     $("kRent").textContent = lastRent && lastRent.median != null ? money0(lastRent.median) : "—";
     $("kGrade").textContent = lastGrade || "—";
   }
 
   function jump(id) { $(id).scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }
   $("kBeds").parentNode.addEventListener("click", function () { jump("pProp"); });
+  $("kArea").parentNode.addEventListener("click", function () { jump("pProp"); });
   $("kRent").parentNode.addEventListener("click", function () { jump("pRent"); });
   $("kGrade").parentNode.addEventListener("click", function () { jump("pNrs"); });
 

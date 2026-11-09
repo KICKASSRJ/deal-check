@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108d">
+<link rel="stylesheet" href="style.css?v=20261108f">
 </head>
 <body class="home">
 
@@ -81,17 +81,39 @@
 
 <!-- ============ Workspace ============ -->
 <main id="work">
-  <aside id="panel" aria-label="Property report">
-    <div id="slotPanel"></div>
-    <div id="found"></div>
-    <div id="acc"></div>
-    <div class="kpis" id="kpis" hidden>
-      <div><b id="kBeds">—</b><span>Layout</span></div>
-      <div><b id="kRent">—</b><span>Median rent</span></div>
-      <div><b id="kGrade">—</b><span>Neighbourhood</span></div>
+  <div id="stage">
+    <div id="map"></div>
+    <div id="empty">Your map will appear here.</div>
+    <div class="mapctl">
+      <div class="seg" role="group" aria-label="Map view">
+        <button id="vRoad" type="button" aria-pressed="true">Map</button>
+        <button id="vSat" type="button" aria-pressed="false">Satellite</button>
+      </div>
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button id="zOut" type="button" aria-label="Zoom out">−</button>
+        <button id="zIn" type="button" aria-label="Zoom in">+</button>
+      </div>
+      <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener noreferrer" style="display:none">Open as image</a>
+    </div>
+  </div>
+
+  <div id="panel" aria-label="Property report">
+    <div class="hero-card">
+      <div class="hc-id">
+        <div id="found"></div>
+        <div id="acc"></div>
+      </div>
+      <div id="slotPanel"></div>
     </div>
 
+    <div class="kpis" id="kpis" hidden>
+      <div><span>Layout</span><b id="kBeds">—</b></div>
+      <div><span>Living area</span><b id="kArea">—</b></div>
+      <div><span>Median rent</span><b id="kRent">—</b></div>
+      <div><span>Neighbourhood</span><b id="kGrade">—</b></div>
+    </div>
 
+    <div class="cols">
     <section class="block" id="pProp">
       <div id="details"></div>
       <details id="picker"><summary>Choose details to show</summary><div id="pickList"></div></details>
@@ -135,26 +157,11 @@
         <div id="nrsOut"></div>
       </div>
     </section>
+    </div>
 
     <div class="panel-foot">
       <a href="privacy.html">Privacy</a><a href="terms.html">Terms</a>
       <small>Lot lines come from Google’s base map and are not a legal survey.</small>
-    </div>
-  </aside>
-
-  <div id="stage">
-    <div id="map"></div>
-    <div id="empty">Your map will appear here.</div>
-    <div class="mapctl">
-      <div class="seg" role="group" aria-label="Map view">
-        <button id="vRoad" type="button" aria-pressed="true">Map</button>
-        <button id="vSat" type="button" aria-pressed="false">Satellite</button>
-      </div>
-      <div class="zoom" role="group" aria-label="Zoom">
-        <button id="zOut" type="button" aria-label="Zoom out">−</button>
-        <button id="zIn" type="button" aria-label="Zoom in">+</button>
-      </div>
-      <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener noreferrer" style="display:none">Open as image</a>
     </div>
   </div>
 </main>
@@ -214,6 +221,6 @@
   <button type="button" id="noticeOk">Got it</button>
 </div>
 
-<script src="app.js?v=20261108d"></script>
+<script src="app.js?v=20261108f"></script>
 </body>
 </html>
