@@ -203,7 +203,7 @@ async function rent(url, env, ip) {
         try { const j = JSON.parse(t); detail = Array.isArray(j.errors) ? j.errors.map((e) => (e && (e.message || e.detail || e.title)) || (typeof e === "string" ? e : "")).filter(Boolean).join("; ") : ""; if (!detail) detail = t; } catch (e) { detail = t; }
       } catch (e) {}
       const hint = up.status === 422 ? " Try a larger radius, a longer look-back, or clear the max square feet." : "";
-      return { error: { status: up.status === 404 || up.status === 422 ? 422 : 502, msg: "Rentometer: " + String(detail).slice(0, 220) + (up.status === 422 ? "" : " (code " + up.status + ")") + "." + hint } };
+      return { error: { status: up.status === 404 || up.status === 422 ? 422 : 502, msg: (up.status === 422 ? "" : "Rentometer: ") + String(detail).slice(0, 220) + (up.status === 422 ? "" : " (code " + up.status + ")") + "." + hint } };
     }
     const data = await up.json();
     if (data && data.error) return { error: { status: 404, msg: String(data.error).slice(0, 160) } };
