@@ -298,3 +298,14 @@ body:not(.home) .kpis { display: grid; grid-template-columns: repeat(auto-fit, m
 
 #area { font-size: 14px; font-weight: 600; color: var(--accent); margin: 2px 0 0; }
 #area:empty { display: none; }
+
+/* North arrow */
+.north { position: absolute; top: 16px; left: 16px; z-index: 5; width: 52px; height: 52px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 50%; box-shadow: var(--shadow); pointer-events: none; }
+.north svg { transition: transform .2s; }
+.north .n-up { fill: var(--accent); }
+.north .n-down { fill: var(--line); }
+.north .n-n { font: 700 11px var(--sans, system-ui, sans-serif); fill: var(--ink); }
+body.home .north { display: none; }
+.north[hidden] { display: none; }
+#mapImg { display: block; max-width: 100%; height: auto; border-radius: 10px; margin: 8px auto 0; }
+#imgState.err { color: #a3281e; }

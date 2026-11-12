@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261111a">
+<link rel="stylesheet" href="style.css?v=20261112a">
 </head>
 <body class="home">
 
@@ -113,6 +113,13 @@
   <div id="stage">
     <div id="map"></div>
     <div id="empty">Your map will appear here.</div>
+    <div id="north" class="north" hidden role="img" aria-label="North is up" title="North is up">
+      <svg id="northSvg" viewBox="0 0 48 48" width="40" height="40" aria-hidden="true" focusable="false">
+        <path d="M24 15 L31 33 L24 29 L17 33 Z" class="n-up"/>
+        <path d="M24 44 L31 33 L24 29 L17 33 Z" class="n-down"/>
+        <text x="24" y="11" text-anchor="middle" class="n-n">N</text>
+      </svg>
+    </div>
     <div class="mapctl">
       <div class="seg" role="group" aria-label="Map view">
         <button id="vRoad" type="button" aria-pressed="true">Map</button>
@@ -122,7 +129,7 @@
         <button id="zOut" type="button" aria-label="Zoom out">−</button>
         <button id="zIn" type="button" aria-label="Zoom in">+</button>
       </div>
-      <a class="btn" id="staticLink" href="#" target="_blank" rel="noopener noreferrer" style="display:none">Open as image</a>
+      <button class="btn" id="staticLink" type="button" style="display:none">Open as image</button>
     </div>
   </div>
 
@@ -165,6 +172,18 @@
       </div>
     </section>
 </main>
+
+<!-- ============ Map image ============ -->
+<dialog id="imgDlg" aria-labelledby="imgTitle">
+  <div class="dlg-head">
+    <div><h2 id="imgTitle">Map image</h2><p id="imgSub">North is up. Right-click or long-press the image to save it.</p></div>
+    <button type="button" class="quiet" id="imgClose" aria-label="Close map image">Close</button>
+  </div>
+  <div class="dlg-body">
+    <p id="imgState">Loading the image…</p>
+    <img id="mapImg" alt="Map image of the property with a red pin. North is up." hidden>
+  </div>
+</dialog>
 
 <!-- ============ History ============ -->
 <dialog id="histDlg" aria-labelledby="histTitle">
@@ -221,6 +240,6 @@
   <button type="button" id="noticeOk">Got it</button>
 </div>
 
-<script src="app.js?v=20261111a"></script>
+<script src="app.js?v=20261112a"></script>
 </body>
 </html>

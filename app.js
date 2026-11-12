@@ -357,7 +357,7 @@
     try { var k = localStorage.getItem("dcOwner"); if (k) h["X-Owner-Key"] = k; } catch (e) {}
     return fetch(url, { headers: h });
   }
-  var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "";
+  var map = null, marker = null, mapsLoaded = false, lastLatLng = null, lastKey = "", staticUrl = "";
 
 
   function setStatus(msg, isErr) {
@@ -400,7 +400,7 @@
     var url = "https://maps.googleapis.com/maps/api/staticmap?center=" + lastLatLng.lat + "," + lastLatLng.lng +
       "&zoom=" + z + "&size=640x640&scale=2&maptype=" + currentType() +
       "&markers=color:red%7C" + lastLatLng.lat + "," + lastLatLng.lng + "&key=" + encodeURIComponent(lastKey);
-    $("staticLink").href = url;
+    staticUrl = url;
     $("staticLink").style.display = "block";
   }
 
@@ -412,6 +412,28 @@
     var name = pick("neighborhood") || pick("sublocality_level_1") || pick("sublocality");
     if (name) return (zip ? zip + " " : "") + name;
     return zip ? "ZIP " + zip : "";
+  }
+
+  // North arrow: points up while the map is north-up; turns if the map is rotated
+  function updateNorth() {
+    var hd = (map && typeof map.getHeading === "function") ? (map.getHeading() || 0) : 0;
+    $("northSvg").style.transform = "rotate(" + (-hd) + "deg)";
+  }
+
+  // "Open as image": show Google's static map in a window on this page.
+  // (A plain link opens without a referrer, so a key limited to this site is refused.)
+  function openMapImage() {
+    if (!staticUrl) return;
+    var img = $("mapImg"), st = $("imgState");
+    img.hidden = true; st.hidden = false; st.className = ""; st.textContent = "Loading the image…";
+    img.onload = function () { st.hidden = true; img.hidden = false; };
+    img.onerror = function () {
+      st.className = "err";
+      st.textContent = "Google did not return the image. In Google Cloud, enable Maps Static API for this key and add it under the key's API restrictions.";
+    };
+    img.removeAttribute("src");
+    img.src = staticUrl + "&r=" + Date.now();   // fresh request each time so load/error always fire
+    openDlg($("imgDlg"));
   }
 
   async function show(unitArg) {
@@ -434,12 +456,14 @@
       lastLatLng = { lat: loc.lat(), lng: loc.lng() };
       enterWorkspace();
       $("empty").style.display = "none";
+      $("north").hidden = false;
       if (!map) {
         map = new google.maps.Map($("map"), {
           center: loc, zoom: 20, mapTypeId: currentType(),
           mapTypeControl: false, streetViewControl: true, fullscreenControl: true, tilt: 0
         });
         map.addListener("zoom_changed", updateStaticLink);
+        map.addListener("heading_changed", updateNorth);
       } else { map.setCenter(loc); map.setZoom(20); }
       if (marker) marker.setMap(null);
       marker = new google.maps.Marker({ position: loc, map: map, title: r.formatted_address, draggable: true });
@@ -751,9 +775,11 @@
   }
 
   function openDlg(d) { if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
-  ["histDlg", "privDlg"].forEach(function (id) {
+  ["histDlg", "privDlg", "imgDlg"].forEach(function (id) {
     $(id).addEventListener("click", function (e) { if (e.target === $(id)) $(id).close(); });
   });
+  $("staticLink").addEventListener("click", openMapImage);
+  $("imgClose").addEventListener("click", function () { $("imgDlg").close(); });
   $("histBtn").addEventListener("click", function () { $("histFilter").value = ""; openDlg($("histDlg")); renderHistList(); });
   $("histClose").addEventListener("click", function () { $("histDlg").close(); });
   $("histFilter").addEventListener("input", renderHistList);
