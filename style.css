@@ -295,3 +295,6 @@ body:not(.home) .kpis { display: grid; grid-template-columns: repeat(auto-fit, m
   .kpis b { white-space: normal; }
 }
 .quad > *, .plain > * { flex-shrink: 0; }
+
+#area { font-size: 14px; font-weight: 600; color: var(--accent); margin: 2px 0 0; }
+#area:empty { display: none; }

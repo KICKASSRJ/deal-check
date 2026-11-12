@@ -404,6 +404,16 @@
     $("staticLink").style.display = "block";
   }
 
+  // "98108 Georgetown": ZIP plus the neighbourhood name Google gives for the address
+  function areaOf(r) {
+    var comps = (r && r.address_components) || [];
+    function pick(t) { for (var i = 0; i < comps.length; i++) { if (comps[i].types && comps[i].types.indexOf(t) > -1) return comps[i].long_name; } return ""; }
+    var zip = pick("postal_code");
+    var name = pick("neighborhood") || pick("sublocality_level_1") || pick("sublocality");
+    if (name) return (zip ? zip + " " : "") + name;
+    return zip ? "ZIP " + zip : "";
+  }
+
   async function show(unitArg) {
     var unit = typeof unitArg === "string" ? unitArg.trim() : "";
     var key = API_KEY.trim(), addr = $("addr").value.trim();
@@ -412,6 +422,7 @@
     if (!addr) return setStatus("Enter a property address.", true);
     setStatus("Looking up address…");
     $("found").textContent = "";
+    $("area").textContent = "";
     try {
       await loadMaps(key);
       var geocoder = new google.maps.Geocoder();
@@ -439,6 +450,7 @@
         ? "Pin is at the exact building."
         : "Google placed this pin by estimate, so it may be off. Click the correct building on the map, or drag the pin, to move it.";
       $("found").textContent = shown;
+      $("area").textContent = areaOf(r);
       histStart(shown);
       loadDetails(shown);
       setStatus("");
